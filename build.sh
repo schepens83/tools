@@ -28,7 +28,7 @@ for f in *.html; do
   grep -q "footer.js" "$f" && continue
   awk -v hash="$FOOTER_HASH" '
     /<\/body>/ && !injected {
-      print "<script src=\"/footer.js?v=" hash "\"></script>"
+      print "<script src=\"footer.js?v=" hash "\"></script>"
       injected=1
     }
     { print }
