@@ -45,7 +45,7 @@ h1 {{ margin-bottom: 0.25rem; }}
 </head>
 <body>
 {body}
-<script type="module" src="/homepage-search.js" data-tool-search></script>
+<script type="module" src="homepage-search.js" data-tool-search></script>
 </body>
 </html>"""
 

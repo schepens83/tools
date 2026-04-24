@@ -64,7 +64,7 @@ def main():
                 "description": docs_description(slug),
                 "created": commits[-1]["date"],
                 "updated": commits[0]["date"],
-                "url": f"/{slug}",
+                "url": f"{slug}.html",
             }
         )
 

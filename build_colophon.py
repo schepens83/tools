@@ -40,7 +40,7 @@ for fname, commits in items:
     )
     rows.append(
         f'<section id="{slug}">'
-        f'<h2><a href="/{slug}">{slug}</a> '
+        f'<h2><a href="{slug}.html">{slug}</a> '
         f'<small>(<a href="{GITHUB}/blob/main/{fname}">source</a>)</small></h2>'
         + (f"<p>{desc}</p>" if desc else "")
         + f"<details><summary>{len(commits)} commit{'s' if len(commits) != 1 else ''}</summary>"
@@ -65,7 +65,7 @@ small {{ font-weight: normal; font-size: 0.8rem; }}
 </head>
 <body>
 <h1>Colophon</h1>
-<p><a href="/">← Home</a></p>
+<p><a href="index.html">← Home</a></p>
 <p>{len(rows)} tools and their full commit histories.</p>
 {"".join(rows)}
 </body>

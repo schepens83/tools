@@ -30,7 +30,7 @@ sections = []
 for month in sorted(by_month.keys(), reverse=True):
     items = sorted(by_month[month], key=lambda t: t["date"])
     lis = "".join(
-        f'<li><a href="/{t["slug"]}">{t["slug"]}</a>'
+        f'<li><a href="{t["slug"]}.html">{t["slug"]}</a>'
         + (f' — {t["description"]}' if t["description"] else "")
         + "</li>"
         for t in items
@@ -51,7 +51,7 @@ a {{ color: #6200ea; }}
 </head>
 <body>
 <h1>Tools by month</h1>
-<p><a href="/">← Home</a></p>
+<p><a href="index.html">← Home</a></p>
 {"".join(sections)}
 </body>
 </html>"""
