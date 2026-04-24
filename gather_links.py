@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 SKIP = {"index.html", "colophon.html", "by-month.html"}
+AI_NOTE_PREFIX = "> AI-generated note:"
 
 
 def git_log(filepath):
@@ -34,7 +35,10 @@ def docs_description(slug):
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
-        if not line.startswith("<!--") and line.strip():
+        if not line.strip():
+            continue
+        if line.startswith("<!--") or line.startswith(AI_NOTE_PREFIX):
+            continue
             return line.strip()
     return ""
 

@@ -4,6 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 gathered = json.loads(Path("gathered_links.json").read_text())
+AI_NOTE_PREFIX = "> AI-generated note:"
 
 
 def description(slug):
@@ -11,7 +12,10 @@ def description(slug):
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
-        if not line.startswith("<!--") and line.strip():
+        if not line.strip():
+            continue
+        if line.startswith("<!--") or line.startswith(AI_NOTE_PREFIX):
+            continue
             words = line.strip().split()
             return " ".join(words[:30]) + ("…" if len(words) > 30 else "")
     return ""

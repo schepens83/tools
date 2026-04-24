@@ -5,6 +5,7 @@ from pathlib import Path
 
 gathered = json.loads(Path("gathered_links.json").read_text())
 GITHUB = "https://github.com/schepens83/tools"
+AI_NOTE_PREFIX = "> AI-generated note:"
 
 
 def linkify(text):
@@ -16,7 +17,10 @@ def description(slug):
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
-        if not line.startswith("<!--") and line.strip():
+        if not line.strip():
+            continue
+        if line.startswith("<!--") or line.startswith(AI_NOTE_PREFIX):
+            continue
             return line.strip()
     return ""
 
