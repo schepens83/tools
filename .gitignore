@@ -1,0 +1,20 @@
+# Generated at build time
+tools.json
+gathered_links.json
+colophon.html
+index.html
+by-month.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+
+# Node
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/

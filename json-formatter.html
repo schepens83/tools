@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSON Formatter</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+h1 { margin-bottom: 0.5rem; }
+.row { display: flex; gap: 1rem; margin-top: 1rem; }
+textarea { flex: 1; height: 400px; font-family: monospace; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; padding: 0.5rem; resize: vertical; }
+.output { flex: 1; height: 400px; font-family: monospace; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; padding: 0.5rem; background: #fafafa; overflow: auto; white-space: pre; }
+.error { color: #c00; }
+.controls { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
+button { padding: 0.35rem 0.75rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 0.9rem; }
+button:hover { background: #f0f0f0; }
+select { padding: 0.35rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+@media (max-width: 600px) { .row { flex-direction: column; } }
+</style>
+</head>
+<body>
+<h1>JSON Formatter</h1>
+<p>Paste JSON on the left to pretty-print and validate it on the right.</p>
+<div class="controls">
+  <label>Indent: <select id="indent">
+    <option value="2" selected>2 spaces</option>
+    <option value="4">4 spaces</option>
+    <option value="tab">tab</option>
+  </select></label>
+  <button id="copy-btn">Copy output</button>
+  <button id="minify-btn">Minify</button>
+  <button id="clear-btn">Clear</button>
+</div>
+<div class="row">
+  <textarea id="input" placeholder="Paste JSON here…" spellcheck="false"></textarea>
+  <div class="output" id="output"></div>
+</div>
+<script>
+const input = document.getElementById('input');
+const output = document.getElementById('output');
+const indentSel = document.getElementById('indent');
+
+function format() {
+  const raw = input.value.trim();
+  if (!raw) { output.textContent = ''; output.className = 'output'; return; }
+  try {
+    const indent = indentSel.value === 'tab' ? '\t' : parseInt(indentSel.value);
+    output.textContent = JSON.stringify(JSON.parse(raw), null, indent);
+    output.className = 'output';
+  } catch (e) {
+    output.textContent = e.message;
+    output.className = 'output error';
+  }
+}
+
+input.addEventListener('input', format);
+indentSel.addEventListener('change', format);
+
+document.getElementById('copy-btn').addEventListener('click', function () {
+  if (!output.textContent || output.classList.contains('error')) return;
+  navigator.clipboard.writeText(output.textContent).then(function () {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(function () { btn.textContent = 'Copy output'; }, 1500);
+  });
+});
+
+document.getElementById('minify-btn').addEventListener('click', function () {
+  const raw = input.value.trim();
+  if (!raw) return;
+  try {
+    output.textContent = JSON.stringify(JSON.parse(raw));
+    output.className = 'output';
+  } catch (e) {
+    output.textContent = e.message;
+    output.className = 'output error';
+  }
+});
+
+document.getElementById('clear-btn').addEventListener('click', function () {
+  input.value = '';
+  output.textContent = '';
+  output.className = 'output';
+});
+</script>
+</body>
+</html>
