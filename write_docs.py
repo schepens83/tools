@@ -6,7 +6,7 @@ from pathlib import Path
 DRY_RUN = "--dry-run" in sys.argv
 VERBOSE = "--verbose" in sys.argv
 SKIP = {"index", "colophon", "by-month"}
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-haiku-4-5-20251001"
 SYSTEM = (
     "Write a paragraph of documentation for this HTML tool page as markdown. "
     "Do not include any headings. Do not use the words 'just' or 'simply'. "
