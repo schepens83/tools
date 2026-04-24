@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regex Tester</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+h1 { margin-bottom: 0.5rem; }
+label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; margin-top: 1rem; }
+.pattern-row { display: flex; gap: 0.5rem; align-items: center; }
+.pattern-row input { flex: 1; font-family: monospace; font-size: 1rem; padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+.pattern-row input.error { border-color: #c00; background: #fff5f5; }
+.flags { font-family: monospace; font-size: 1rem; width: 80px; padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 4px; }
+textarea { width: 100%; height: 180px; font-family: monospace; font-size: 0.9rem; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; resize: vertical; }
+.error-msg { color: #c00; font-size: 0.85rem; margin-top: 0.25rem; min-height: 1.2em; }
+.results { margin-top: 1rem; }
+.results h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+.highlighted { font-family: monospace; font-size: 0.9rem; background: #fafafa; border: 1px solid #eee; border-radius: 4px; padding: 0.75rem; white-space: pre-wrap; word-break: break-all; line-height: 1.7; }
+mark { background: #ffe066; border-radius: 2px; padding: 0 1px; }
+mark.active { background: #ff9800; }
+.match-list { margin-top: 1rem; }
+.match-list h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+.match-item { font-family: monospace; font-size: 0.85rem; background: #fafafa; border: 1px solid #eee; border-radius: 4px; padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; }
+.match-item .index { color: #888; font-size: 0.75rem; }
+.match-item .groups { color: #555; margin-top: 0.2rem; }
+.no-matches { color: #888; font-size: 0.9rem; }
+.count { font-size: 0.85rem; color: #555; font-weight: normal; }
+</style>
+</head>
+<body>
+<h1>Regex Tester</h1>
+
+<label>Pattern</label>
+<div class="pattern-row">
+  <span style="font-family:monospace;font-size:1.1rem;color:#888">/</span>
+  <input type="text" id="pattern" placeholder="e.g. \b\w+@\w+\.\w+\b" spellcheck="false" autocomplete="off">
+  <span style="font-family:monospace;font-size:1.1rem;color:#888">/</span>
+  <input type="text" id="flags" class="flags" value="g" placeholder="flags" spellcheck="false" maxlength="10">
+</div>
+<div class="error-msg" id="error-msg"></div>
+
+<label>Test string</label>
+<textarea id="test-input" placeholder="Paste your test string here…" spellcheck="false"></textarea>
+
+<div class="results">
+  <h2>Matches <span class="count" id="match-count"></span></h2>
+  <div class="highlighted" id="highlighted"></div>
+</div>
+
+<div class="match-list">
+  <h2>Match details</h2>
+  <div id="match-details"></div>
+</div>
+
+<script>
+const patternEl = document.getElementById('pattern');
+const flagsEl = document.getElementById('flags');
+const testEl = document.getElementById('test-input');
+const errorMsg = document.getElementById('error-msg');
+const highlighted = document.getElementById('highlighted');
+const matchCount = document.getElementById('match-count');
+const matchDetails = document.getElementById('match-details');
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function run() {
+  const patStr = patternEl.value;
+  const flagStr = flagsEl.value.replace(/[^gimsuy]/g, '');
+  const text = testEl.value;
+
+  errorMsg.textContent = '';
+  patternEl.classList.remove('error');
+
+  if (!patStr) {
+    highlighted.textContent = text;
+    matchCount.textContent = '';
+    matchDetails.innerHTML = '';
+    return;
+  }
+
+  let re;
+  try {
+    // Always include 'd' for indices if supported
+    const f = flagStr.includes('g') ? flagStr : flagStr + 'g';
+    re = new RegExp(patStr, f);
+  } catch (e) {
+    errorMsg.textContent = e.message;
+    patternEl.classList.add('error');
+    highlighted.textContent = text;
+    matchCount.textContent = '';
+    matchDetails.innerHTML = '';
+    return;
+  }
+
+  const matches = [];
+  let m;
+  re.lastIndex = 0;
+  while ((m = re.exec(text)) !== null) {
+    matches.push({ index: m.index, end: m.index + m[0].length, value: m[0], groups: m.slice(1) });
+    if (!flagStr.includes('g')) break;
+    if (m[0].length === 0) re.lastIndex++;
+  }
+
+  matchCount.textContent = matches.length ? `(${matches.length} match${matches.length !== 1 ? 'es' : ''})` : '';
+
+  // Build highlighted output
+  if (!matches.length) {
+    highlighted.innerHTML = escapeHtml(text) || '<span style="color:#aaa">No test string yet</span>';
+    matchDetails.innerHTML = '<span class="no-matches">No matches found.</span>';
+    return;
+  }
+
+  let html = '';
+  let pos = 0;
+  matches.forEach(function (match, i) {
+    html += escapeHtml(text.slice(pos, match.index));
+    html += '<mark class="' + (i === 0 ? 'active' : '') + '" title="Match ' + (i + 1) + '">' + escapeHtml(match.value) + '</mark>';
+    pos = match.end;
+  });
+  html += escapeHtml(text.slice(pos));
+  highlighted.innerHTML = html;
+
+  // Match detail list
+  matchDetails.innerHTML = matches.map(function (match, i) {
+    const groupsHtml = match.groups.length
+      ? '<div class="groups">Groups: ' + match.groups.map(function (g, j) {
+          return '<span title="group ' + (j+1) + '">' + escapeHtml(g === undefined ? '<undefined>' : g) + '</span>';
+        }).join(', ') + '</div>'
+      : '';
+    return '<div class="match-item">'
+      + '<span class="index">Match ' + (i + 1) + ' @ ' + match.index + '–' + match.end + '</span><br>'
+      + escapeHtml(match.value)
+      + groupsHtml
+      + '</div>';
+  }).join('');
+}
+
+patternEl.addEventListener('input', run);
+flagsEl.addEventListener('input', run);
+testEl.addEventListener('input', run);
+</script>
+</body>
+</html>
