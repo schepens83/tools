@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSV File Explorer</title>
+  <style>
+    :root {
+      --ink: #16202a; --muted: #5f6d7a; --line: #d8dee5;
+      --panel: #ffffff; --field: #f5f7f9;
+      --blue: #005f8f; --blue-dark: #004766; --teal: #008575;
+      --green: #15803d; --red: #b34040; --orange: #c05a10;
+      --shadow: 0 2px 8px rgba(22,32,42,0.10);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
+      color: var(--ink); min-height: 100vh;
+      background: linear-gradient(135deg, rgba(0,95,143,0.08), transparent 40%), #f8fafb;
+    }
+    nav {
+      display: flex; align-items: center; gap: 1rem; padding: 0 1.25rem; height: 48px;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
+    }
+    .nav-title { font-size: 0.85rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .spacer { flex: 1; }
+    button {
+      font: inherit; cursor: pointer; border: 1px solid var(--line); border-radius: 6px;
+      padding: 0.45rem 0.9rem; background: var(--panel); color: var(--ink); transition: border-color 0.15s;
+    }
+    button:hover { border-color: var(--blue); }
+    button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    button.primary:hover { background: var(--blue-dark); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button:disabled:hover { border-color: var(--line); }
+    main { max-width: 1200px; margin: 0 auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+    /* drop zone */
+    .drop-zone {
+      border: 2px dashed var(--line); border-radius: 12px;
+      padding: 3rem 2rem; text-align: center; cursor: pointer;
+      background: var(--panel); transition: border-color 0.2s, background 0.2s;
+      display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--blue); background: rgba(0,95,143,0.04);
+    }
+    .drop-zone .icon { font-size: 2.5rem; line-height: 1; }
+    .drop-zone h2 { font-size: 1.1rem; font-weight: 700; }
+    .drop-zone p { font-size: 0.85rem; color: var(--muted); }
+    .drop-zone input[type=file] { display: none; }
+    .browse-link { color: var(--blue); text-decoration: underline; cursor: pointer; }
+
+    /* status */
+    .status { padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; display: none; }
+    .status.error { background: #fee2e2; color: var(--red); display: block; }
+    .status.info  { background: #dbeafe; color: #1e40af; display: block; }
+
+    /* summary cards */
+    .summary-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+      padding: 0.9rem 1rem;
+    }
+    .card .label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+    .card .value { font-size: 1.25rem; font-weight: 800; color: var(--blue); }
+    .card .sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* columns table */
+    .section-header {
+      font-size: 0.8rem; font-weight: 800; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.05em; padding-bottom: 0.4rem; border-bottom: 2px solid var(--line);
+      margin-bottom: 0.75rem;
+    }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      text-align: left; padding: 0.5rem 0.65rem;
+      background: var(--field); border-bottom: 2px solid var(--line);
+      font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--line); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--field); }
+    td { padding: 0.5rem 0.65rem; vertical-align: top; }
+    .col-name { font-weight: 700; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .type-badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 100px;
+      font-size: 0.7rem; font-weight: 700; white-space: nowrap;
+    }
+    .type-numeric  { background: #dbeafe; color: #1e40af; }
+    .type-integer  { background: #e0f2fe; color: #0369a1; }
+    .type-date     { background: #dcfce7; color: #15803d; }
+    .type-boolean  { background: #fef3c7; color: #92400e; }
+    .type-category { background: #f3e8ff; color: #6b21a8; }
+    .type-text     { background: #f1f5f9; color: #475569; }
+    .type-empty    { background: #fee2e2; color: var(--red); }
+    .fill-bar { width: 80px; height: 6px; background: var(--line); border-radius: 3px; margin-top: 3px; }
+    .fill-bar-inner { height: 100%; border-radius: 3px; background: var(--teal); }
+    .top-vals { font-size: 0.75rem; color: var(--muted); line-height: 1.6; }
+    .top-vals span { color: var(--ink); font-weight: 600; }
+    .sample-vals { font-size: 0.75rem; color: var(--muted); font-family: monospace; }
+
+    /* markdown output */
+    .md-box {
+      background: #16202a; color: #e2e8f0; border-radius: 8px;
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem; line-height: 1.6; padding: 1.25rem;
+      white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto;
+    }
+    .copy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .copy-row .section-header { margin: 0; border: none; padding: 0; }
+    .copy-feedback { font-size: 0.78rem; color: var(--green); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
+    .copy-feedback.show { opacity: 1; }
+
+    /* col detail */
+    .col-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
+    .col-detail .kv { font-size: 0.78rem; }
+    .col-detail .kv .k { color: var(--muted); }
+    .col-detail .kv .v { font-weight: 600; }
+
+    /* expandable rows */
+    .expand-btn { cursor: pointer; color: var(--blue); background: none; border: none; padding: 0; font-size: 0.75rem; text-decoration: underline; }
+    .detail-row td { background: rgba(0,95,143,0.03); }
+    .hidden { display: none; }
+
+    /* progress */
+    .progress-wrap { display: none; }
+    .progress-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 0.5rem; }
+    .progress-bar-inner { height: 100%; background: var(--blue); border-radius: 2px; width: 0%; transition: width 0.2s; }
+  </style>
+</head>
+<body>
+<nav>
+  <span class="nav-title">CSV File Explorer</span>
+  <span class="spacer"></span>
+  <button id="resetBtn" class="danger" style="display:none" onclick="reset()">Clear</button>
+</nav>
+<main>
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="icon">📂</div>
+    <h2>Drop a CSV file here</h2>
+    <p>or <span class="browse-link">browse to select</span> — any separator (comma, semicolon, tab, pipe)</p>
+    <input type="file" id="fileInput" accept=".csv,.tsv,.txt" onchange="handleFile(this.files[0])">
+  </div>
+
+  <div class="status" id="statusMsg"></div>
+  <div class="progress-wrap" id="progressWrap">
+    <div style="font-size:0.8rem;color:var(--muted)">Parsing…</div>
+    <div class="progress-bar"><div class="progress-bar-inner" id="progressBar"></div></div>
+  </div>
+
+  <!-- Summary cards -->
+  <div id="summarySection" class="hidden">
+    <div class="section-header">File Summary</div>
+    <div class="summary-grid" id="summaryGrid"></div>
+  </div>
+
+  <!-- Column table -->
+  <div id="columnSection" class="hidden">
+    <div class="panel">
+      <div class="section-header">Column Analysis</div>
+      <div style="overflow-x:auto">
+        <table id="colTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Column Name</th>
+              <th>Type</th>
+              <th>Fill Rate</th>
+              <th>Unique</th>
+              <th>Statistics</th>
+              <th>Top Values</th>
+              <th>Samples</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="colTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Markdown output -->
+  <div id="markdownSection" class="hidden">
+    <div class="panel">
+      <div class="copy-row">
+        <div class="section-header">Markdown Context Report</div>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span class="copy-feedback" id="copyFeedback">Copied!</span>
+          <button class="primary" onclick="copyMarkdown()">Copy to Clipboard</button>
+        </div>
+      </div>
+      <div class="md-box" id="mdBox"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── drag & drop ──────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+let mdContent = '';
+
+function reset() {
+  mdContent = '';
+  ['summarySection','columnSection','markdownSection'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById('resetBtn').style.display = 'none';
+  document.getElementById('dropZone').style.display = '';
+  document.getElementById('statusMsg').className = 'status';
+  document.getElementById('progressWrap').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg; el.className = 'status ' + type;
+}
+
+// ─── file handler ─────────────────────────────────────────────────────────────
+function handleFile(file) {
+  if (!file) return;
+  setStatus('', '');
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('progressBar').style.width = '20%';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('progressBar').style.width = '50%';
+    try {
+      const text = e.target.result;
+      const result = analyzeCSV(text, file);
+      document.getElementById('progressBar').style.width = '90%';
+      renderResults(result, file);
+      document.getElementById('progressBar').style.width = '100%';
+      setTimeout(() => { document.getElementById('progressWrap').style.display = 'none'; }, 400);
+      document.getElementById('dropZone').style.display = 'none';
+      document.getElementById('resetBtn').style.display = '';
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+      document.getElementById('progressWrap').style.display = 'none';
+    }
+  };
+  reader.onerror = () => { setStatus('Failed to read file.', 'error'); };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ─── CSV parser ───────────────────────────────────────────────────────────────
+function detectSeparator(sample) {
+  const counts = { ',': 0, ';': 0, '\t': 0, '|': 0 };
+  // Count occurrences outside quotes on first few lines
+  const lines = sample.split('\n').slice(0, 5);
+  for (const line of lines) {
+    let inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (!inQ && counts[ch] !== undefined) counts[ch]++;
+    }
+  }
+  // Pick the most frequent
+  return Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+function parseCSV(text, sep) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+    rows.push(parseLine(line, sep));
+  }
+  return rows;
+}
+
+function parseLine(line, sep) {
+  const fields = [];
+  let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === sep && !inQ) {
+      fields.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur);
+  return fields;
+}
+
+// ─── type detection ───────────────────────────────────────────────────────────
+const DATE_RES = [
+  /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/,
+  /^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/,
+  /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/,
+  /^\d{4}\/\d{2}\/\d{2}$/,
+];
+const BOOL_VALS = new Set(['true','false','yes','no','1','0','y','n','ja','nee']);
+
+function isNumeric(v) { return v !== '' && !isNaN(Number(v)) && v.trim() !== ''; }
+function isInteger(v) { const n = Number(v); return isNumeric(v) && Number.isInteger(n); }
+function isDate(v) { return DATE_RES.some(r => r.test(v.trim())); }
+function isBool(v) { return BOOL_VALS.has(v.trim().toLowerCase()); }
+
+function detectType(nonEmpty) {
+  if (nonEmpty.length === 0) return 'empty';
+  const sample = nonEmpty.slice(0, 500);
+  if (sample.every(isBool)) return 'boolean';
+  if (sample.every(isDate)) return 'date';
+  if (sample.every(isInteger)) return 'integer';
+  if (sample.every(isNumeric)) return 'numeric';
+  // categorical heuristic: unique ratio < 0.3 or ≤ 30 unique
+  return 'text'; // will be refined after counting uniques
+}
+
+function median(sorted) {
+  const m = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[m-1] + sorted[m]) / 2 : sorted[m];
+}
+
+function pct(n, total) { return total ? ((n/total)*100).toFixed(1) + '%' : '—'; }
+
+function fmt(n) {
+  if (typeof n !== 'number') return String(n);
+  return Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, {maximumFractionDigits: 4});
+}
+
+// ─── core analysis ────────────────────────────────────────────────────────────
+function analyzeCSV(text, file) {
+  const sep = detectSeparator(text.slice(0, 4000));
+  const sepName = { ',': 'comma', ';': 'semicolon', '\t': 'tab', '|': 'pipe' }[sep] || sep;
+
+  const rows = parseCSV(text, sep);
+  if (rows.length === 0) throw new Error('No data found in file.');
+
+  // Detect header: if first row looks like labels (non-numeric, non-date dominant)
+  const firstRow = rows[0];
+  const numericFirst = firstRow.filter(isNumeric).length;
+  const hasHeader = numericFirst < firstRow.length * 0.5;
+
+  const headers = hasHeader ? firstRow.map((h,i) => h.trim() || `Column${i+1}`) : firstRow.map((_,i) => `Column${i+1}`);
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const numCols = headers.length;
+  const numRows = dataRows.length;
+
+  // Transpose to columns
+  const cols = headers.map((name, ci) => {
+    const raw = dataRows.map(r => (r[ci] !== undefined ? r[ci] : ''));
+    const trimmed = raw.map(v => v.trim());
+    const nonEmpty = trimmed.filter(v => v !== '');
+    const emptyCount = trimmed.length - nonEmpty.length;
+
+    let type = detectType(nonEmpty);
+
+    // Count uniques
+    const freq = {};
+    for (const v of trimmed) { freq[v] = (freq[v]||0) + 1; }
+    delete freq[''];
+    const uniqueVals = Object.keys(freq);
+    const uniqueCount = uniqueVals.length;
+
+    // Refine: if text but low cardinality → categorical
+    if (type === 'text' && uniqueCount <= Math.max(30, numRows * 0.05)) type = 'category';
+
+    // Top values
+    const topVals = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, 5)
+      .map(([v,c]) => ({ value: v, count: c, pct: pct(c, nonEmpty.length) }));
+
+    // Stats
+    let stats = {};
+    if (type === 'numeric' || type === 'integer') {
+      const nums = nonEmpty.map(Number).sort((a,b)=>a-b);
+      const sum = nums.reduce((a,b)=>a+b,0);
+      const mean = sum / nums.length;
+      const variance = nums.reduce((a,b)=>a+(b-mean)**2,0) / nums.length;
+      stats = {
+        min: nums[0], max: nums[nums.length-1],
+        mean: mean, median: median(nums),
+        stdev: Math.sqrt(variance),
+        p25: nums[Math.floor(nums.length*0.25)],
+        p75: nums[Math.floor(nums.length*0.75)],
+        sum: sum
+      };
+    } else if (type === 'date') {
+      const dates = nonEmpty.map(v => new Date(v)).filter(d => !isNaN(d)).sort((a,b)=>a-b);
+      if (dates.length) {
+        const spanDays = Math.round((dates[dates.length-1] - dates[0]) / 86400000);
+        stats = { minDate: dates[0].toISOString().slice(0,10), maxDate: dates[dates.length-1].toISOString().slice(0,10), spanDays };
+      }
+    } else if (type === 'boolean') {
+      const t = nonEmpty.filter(v => ['true','yes','1','y','ja'].includes(v.toLowerCase())).length;
+      stats = { trueCount: t, falseCount: nonEmpty.length - t,
+                truePct: pct(t, nonEmpty.length) };
+    }
+
+    // Samples (first 3 distinct non-empty values)
+    const samples = uniqueVals.slice(0, 3);
+
+    return { name, type, rawCount: trimmed.length, nonEmptyCount: nonEmpty.length, emptyCount,
+             fillRate: pct(nonEmpty.length, trimmed.length),
+             uniqueCount, uniquenessRate: pct(uniqueCount, nonEmpty.length),
+             topVals, stats, samples };
+  });
+
+  // File-level date range
+  const dateCols = cols.filter(c => c.type === 'date' && c.stats.minDate);
+  const allDates = dateCols.flatMap(c => [c.stats.minDate, c.stats.maxDate]).sort();
+  const fileMinDate = allDates[0] || null;
+  const fileMaxDate = allDates[allDates.length-1] || null;
+
+  // Estimate quality: avg fill rate
+  const avgFill = cols.reduce((a,c) => a + c.nonEmptyCount, 0) / (numCols * numRows) * 100;
+
+  return { sep, sepName, hasHeader, headers, numRows, numCols, cols,
+           fileMinDate, fileMaxDate, avgFill,
+           fileSize: file.size, fileName: file.name };
+}
+
+// ─── render ───────────────────────────────────────────────────────────────────
+function renderResults(r, file) {
+  renderSummary(r);
+  renderColumns(r);
+  mdContent = buildMarkdown(r);
+  document.getElementById('mdBox').textContent = mdContent;
+  ['summarySection','columnSection','markdownSection'].forEach(id =>
+    document.getElementById(id).classList.remove('hidden'));
+}
+
+function renderSummary(r) {
+  const cards = [
+    { label: 'File', value: r.fileName, sub: fmtBytes(r.fileSize) },
+    { label: 'Rows', value: r.numRows.toLocaleString(), sub: 'data rows' },
+    { label: 'Columns', value: r.numCols, sub: 'fields' },
+    { label: 'Separator', value: r.sepName, sub: r.sep === '\t' ? '\\t' : `"${r.sep}"` },
+    { label: 'Header row', value: r.hasHeader ? 'Yes' : 'No', sub: '' },
+    { label: 'Avg fill rate', value: r.avgFill.toFixed(1) + '%', sub: 'non-empty cells' },
+    ...(r.fileMinDate ? [{ label: 'Date range', value: r.fileMinDate, sub: '→ ' + r.fileMaxDate }] : []),
+  ];
+  document.getElementById('summaryGrid').innerHTML = cards.map(c =>
+    `<div class="card"><div class="label">${c.label}</div><div class="value">${c.value}</div>${c.sub ? `<div class="sub">${c.sub}</div>` : ''}</div>`
+  ).join('');
+}
+
+function typeClass(t) { return `type-badge type-${t}`; }
+
+function renderColumns(r) {
+  const tbody = document.getElementById('colTableBody');
+  tbody.innerHTML = r.cols.map((c, i) => {
+    const statsHtml = buildStatsHtml(c);
+    const topHtml = c.topVals.length
+      ? c.topVals.map(tv => `<span>${tv.value}</span> ${tv.pct}`).join('<br>')
+      : '—';
+    const fillPct = parseFloat(c.fillRate) || 0;
+    return `
+      <tr>
+        <td style="color:var(--muted);font-size:0.75rem">${i+1}</td>
+        <td class="col-name" title="${esc(c.name)}">${esc(c.name)}</td>
+        <td><span class="${typeClass(c.type)}">${c.type}</span></td>
+        <td>
+          ${c.fillRate}
+          <div class="fill-bar"><div class="fill-bar-inner" style="width:${fillPct}%"></div></div>
+          <div style="font-size:0.7rem;color:var(--muted)">${c.emptyCount} empty</div>
+        </td>
+        <td>
+          <div style="font-weight:700">${c.uniqueCount.toLocaleString()}</div>
+          <div style="font-size:0.7rem;color:var(--muted)">${c.uniquenessRate} unique</div>
+        </td>
+        <td style="min-width:140px">${statsHtml}</td>
+        <td class="top-vals" style="min-width:160px">${topHtml}</td>
+        <td class="sample-vals">${c.samples.map(esc).join('<br>')}</td>
+      </tr>`;
+  }).join('');
+}
+
+function buildStatsHtml(c) {
+  const s = c.stats;
+  if (c.type === 'numeric' || c.type === 'integer') {
+    return `
+      <div style="font-size:0.75rem;line-height:1.7">
+        <span style="color:var(--muted)">min</span> <b>${fmt(s.min)}</b>
+        &nbsp;<span style="color:var(--muted)">max</span> <b>${fmt(s.max)}</b><br>
+        <span style="color:var(--muted)">mean</span> <b>${fmt(+s.mean.toFixed(4))}</b>
+        &nbsp;<span style="color:var(--muted)">med</span> <b>${fmt(s.median)}</b><br>
+        <span style="color:var(--muted)">σ</span> <b>${fmt(+s.stdev.toFixed(4))}</b>
+      </div>`;
+  }
+  if (c.type === 'date') {
+    return `<div style="font-size:0.75rem;line-height:1.7">
+      <b>${s.minDate}</b><br>→ <b>${s.maxDate}</b><br>
+      <span style="color:var(--muted)">${s.spanDays} days</span></div>`;
+  }
+  if (c.type === 'boolean') {
+    return `<div style="font-size:0.75rem;line-height:1.7">
+      ✓ <b>${s.trueCount}</b> (${s.truePct})<br>
+      ✗ <b>${s.falseCount}</b></div>`;
+  }
+  if (c.type === 'category' || c.type === 'text') {
+    return `<div style="font-size:0.75rem;color:var(--muted)">${c.uniqueCount} unique values</div>`;
+  }
+  return '—';
+}
+
+// ─── markdown builder ─────────────────────────────────────────────────────────
+function buildMarkdown(r) {
+  const lines = [];
+  lines.push(`# CSV Context Report: \`${r.fileName}\``);
+  lines.push('');
+
+  lines.push('## File Summary');
+  lines.push('');
+  lines.push(`| Property | Value |`);
+  lines.push(`|---|---|`);
+  lines.push(`| File name | \`${r.fileName}\` |`);
+  lines.push(`| File size | ${fmtBytes(r.fileSize)} |`);
+  lines.push(`| Rows (data) | ${r.numRows.toLocaleString()} |`);
+  lines.push(`| Columns | ${r.numCols} |`);
+  lines.push(`| Separator | ${r.sepName} (\`${r.sep === '\t' ? '\\t' : r.sep}\`) |`);
+  lines.push(`| Header row detected | ${r.hasHeader ? 'Yes' : 'No'} |`);
+  lines.push(`| Average fill rate | ${r.avgFill.toFixed(1)}% |`);
+  if (r.fileMinDate) {
+    lines.push(`| Date range (all date columns) | ${r.fileMinDate} → ${r.fileMaxDate} |`);
+  }
+  lines.push('');
+
+  lines.push('## Column Overview');
+  lines.push('');
+  lines.push('| # | Column | Type | Fill Rate | Unique Values | Uniqueness |');
+  lines.push('|---|---|---|---|---|---|');
+  for (let i = 0; i < r.cols.length; i++) {
+    const c = r.cols[i];
+    lines.push(`| ${i+1} | \`${c.name}\` | ${c.type} | ${c.fillRate} | ${c.uniqueCount.toLocaleString()} | ${c.uniquenessRate} |`);
+  }
+  lines.push('');
+
+  lines.push('## Column Details');
+  lines.push('');
+  for (let i = 0; i < r.cols.length; i++) {
+    const c = r.cols[i];
+    lines.push(`### ${i+1}. \`${c.name}\``);
+    lines.push('');
+    lines.push(`- **Type:** ${c.type}`);
+    lines.push(`- **Total rows:** ${c.rawCount.toLocaleString()}`);
+    lines.push(`- **Non-empty:** ${c.nonEmptyCount.toLocaleString()} (${c.fillRate})`);
+    lines.push(`- **Empty/null:** ${c.emptyCount.toLocaleString()}`);
+    lines.push(`- **Unique values:** ${c.uniqueCount.toLocaleString()} (${c.uniquenessRate})`);
+
+    const s = c.stats;
+    if (c.type === 'numeric' || c.type === 'integer') {
+      lines.push(`- **Min:** ${fmt(s.min)}`);
+      lines.push(`- **Max:** ${fmt(s.max)}`);
+      lines.push(`- **Mean:** ${fmt(+s.mean.toFixed(6))}`);
+      lines.push(`- **Median:** ${fmt(s.median)}`);
+      lines.push(`- **Std dev:** ${fmt(+s.stdev.toFixed(6))}`);
+      lines.push(`- **25th pct:** ${fmt(s.p25)}  |  **75th pct:** ${fmt(s.p75)}`);
+      lines.push(`- **Sum:** ${fmt(s.sum)}`);
+    } else if (c.type === 'date') {
+      lines.push(`- **Min date:** ${s.minDate}`);
+      lines.push(`- **Max date:** ${s.maxDate}`);
+      lines.push(`- **Span:** ${s.spanDays} days`);
+    } else if (c.type === 'boolean') {
+      lines.push(`- **True:** ${s.trueCount} (${s.truePct})`);
+      lines.push(`- **False:** ${s.falseCount}`);
+    }
+
+    if (c.topVals.length) {
+      lines.push('');
+      lines.push('**Top values:**');
+      lines.push('');
+      lines.push('| Value | Count | % |');
+      lines.push('|---|---|---|');
+      for (const tv of c.topVals) {
+        lines.push(`| \`${tv.value}\` | ${tv.count.toLocaleString()} | ${tv.pct} |`);
+      }
+    }
+
+    if (c.samples.length) {
+      lines.push('');
+      lines.push(`**Sample values:** ${c.samples.map(v => `\`${v}\``).join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push(`*Generated by CSV File Explorer — ${new Date().toISOString().slice(0,16).replace('T',' ')}*`);
+
+  return lines.join('\n');
+}
+
+// ─── clipboard ────────────────────────────────────────────────────────────────
+function copyMarkdown() {
+  if (!mdContent) return;
+  navigator.clipboard.writeText(mdContent).then(() => {
+    const fb = document.getElementById('copyFeedback');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = mdContent; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    const fb = document.getElementById('copyFeedback');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  });
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(2) + ' MB';
+}
+</script>
+</body>
+</html>

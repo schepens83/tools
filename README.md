@@ -6,12 +6,14 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 
 ### Recently added
 
+- [CSV File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 - [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
 
 ### Recently updated
 
+- [CSV File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 - [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
@@ -22,6 +24,7 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 
 <!-- tools starts -->
 
+- [CSV File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 - [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
