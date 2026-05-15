@@ -44,10 +44,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          CHANGED=$(git diff --name-only HEAD -- '*/*.docs.md'; git ls-files --others --exclude-standard '*/*.docs.md')
+          CHANGED=$(git diff --name-only HEAD -- '*/*.docs.md' 'README.md'; git ls-files --others --exclude-standard '*/*.docs.md')
           if [ -n "$CHANGED" ]; then
-            git add '*/*.docs.md'
-            STEMS=$(echo "$CHANGED" | sed 's|.*/||; s/\.docs\.md//' | tr '\n' ' ' | xargs)
+            git add '*/*.docs.md' README.md
+            STEMS=$(echo "$CHANGED" | grep '\.docs\.md' | sed 's|.*/||; s/\.docs\.md//' | tr '\n' ' ' | xargs || echo "readme")
             git commit -m "Generated docs: $STEMS"
             git push
           fi

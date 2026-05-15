@@ -3,6 +3,8 @@ import json
 import markdown
 from pathlib import Path
 
+PAGES_BASE = "https://schepens83.github.io/tools"
+
 tools = json.loads(Path("tools.json").read_text())
 readme = Path("README.md").read_text()
 
@@ -12,21 +14,41 @@ by_created = sorted(tools, key=lambda t: t["created"], reverse=True)[:5]
 by_updated = sorted(tools, key=lambda t: t["updated"], reverse=True)[:5]
 
 
-def tool_li(t):
+def tool_li_html(t):
     return f'<li><a href="{t["url"]}">{t["title"]}</a></li>'
 
 
-recently = (
+def tool_li_md(t):
+    return f'- [{t["title"]}]({PAGES_BASE}/{t["url"]})'
+
+
+recently_html = (
     "<h2>Recently added</h2>"
-    "<ul>" + "".join(tool_li(t) for t in by_created) + "</ul>"
+    "<ul>" + "".join(tool_li_html(t) for t in by_created) + "</ul>"
     "<h2>Recently updated</h2>"
-    "<ul>" + "".join(tool_li(t) for t in by_updated) + "</ul>"
+    "<ul>" + "".join(tool_li_html(t) for t in by_updated) + "</ul>"
+)
+
+recently_md = (
+    "\n\n### Recently added\n\n"
+    + "\n".join(tool_li_md(t) for t in by_created)
+    + "\n\n### Recently updated\n\n"
+    + "\n".join(tool_li_md(t) for t in by_updated)
+    + "\n\n"
 )
 
 body = body.replace(
     "<!-- recently starts --><!-- recently stops -->",
-    f"<!-- recently starts -->{recently}<!-- recently stops -->",
+    f"<!-- recently starts -->{recently_html}<!-- recently stops -->",
 )
+
+readme_updated = readme.replace(
+    "<!-- recently starts --><!-- recently stops -->",
+    f"<!-- recently starts -->{recently_md}<!-- recently stops -->",
+)
+if readme_updated != readme:
+    Path("README.md").write_text(readme_updated)
+    print("Updated README.md recently section")
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
