@@ -2,7 +2,19 @@
 
 Browser-based utility tools. Each tool is a single self-contained HTML file.
 
-<!-- recently starts --><!-- recently stops -->
+<!-- recently starts -->
+
+### Recently added
+
+- [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
+- [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
+
+### Recently updated
+
+- [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
+- [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
+
+<!-- recently stops -->
 
 ## Tools
 
