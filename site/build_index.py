@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 import markdown
 from pathlib import Path
 
@@ -8,10 +9,9 @@ PAGES_BASE = "https://schepens83.github.io/tools"
 tools = json.loads(Path("tools.json").read_text())
 readme = Path("README.md").read_text()
 
-body = markdown.markdown(readme, extensions=["tables", "fenced_code"])
-
 by_created = sorted(tools, key=lambda t: t["created"], reverse=True)[:5]
 by_updated = sorted(tools, key=lambda t: t["updated"], reverse=True)[:5]
+all_tools = sorted(tools, key=lambda t: t["title"])
 
 
 def tool_li_html(t):
@@ -19,7 +19,8 @@ def tool_li_html(t):
 
 
 def tool_li_md(t):
-    return f'- [{t["title"]}]({PAGES_BASE}/{t["url"]})'
+    desc = f' — {t["description"]}' if t.get("description") else ""
+    return f'- [{t["title"]}]({PAGES_BASE}/{t["url"]}){desc}'
 
 
 recently_html = (
@@ -37,18 +38,27 @@ recently_md = (
     + "\n\n"
 )
 
-body = body.replace(
-    "<!-- recently starts --><!-- recently stops -->",
-    f"<!-- recently starts -->{recently_html}<!-- recently stops -->",
+tools_md = "\n\n" + "\n".join(tool_li_md(t) for t in all_tools) + "\n\n"
+
+
+def replace_block(text, marker, content):
+    pattern = rf"<!-- {marker} starts -->.*?<!-- {marker} stops -->"
+    replacement = f"<!-- {marker} starts -->{content}<!-- {marker} stops -->"
+    return re.sub(pattern, replacement, text, flags=re.DOTALL)
+
+
+body = replace_block(
+    markdown.markdown(readme, extensions=["tables", "fenced_code"]),
+    "recently",
+    recently_html,
 )
 
-readme_updated = readme.replace(
-    "<!-- recently starts --><!-- recently stops -->",
-    f"<!-- recently starts -->{recently_md}<!-- recently stops -->",
-)
+readme_updated = replace_block(readme, "recently", recently_md)
+readme_updated = replace_block(readme_updated, "tools", tools_md)
+
 if readme_updated != readme:
     Path("README.md").write_text(readme_updated)
-    print("Updated README.md recently section")
+    print("Updated README.md")
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
