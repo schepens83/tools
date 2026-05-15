@@ -13,7 +13,7 @@ def linkify(text):
 
 
 def description(slug):
-    p = Path(f"{slug}.docs.md")
+    p = Path(f"{slug}/{slug}.docs.md")
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
@@ -32,10 +32,9 @@ items = sorted(
 )
 
 rows = []
-for fname, commits in items:
+for slug, commits in items:
     if not commits:
         continue
-    slug = fname.replace(".html", "")
     desc = description(slug)
     commit_lis = "".join(
         f'<li>{c["date"]} — {linkify(c["message"])} '
@@ -44,8 +43,8 @@ for fname, commits in items:
     )
     rows.append(
         f'<section id="{slug}">'
-        f'<h2><a href="{slug}.html">{slug}</a> '
-        f'<small>(<a href="{GITHUB}/blob/main/{fname}">source</a>)</small></h2>'
+        f'<h2><a href="{slug}/">{slug}</a> '
+        f'<small>(<a href="{GITHUB}/blob/main/{slug}/index.html">source</a>)</small></h2>'
         + (f"<p>{desc}</p>" if desc else "")
         + f"<details><summary>{len(commits)} commit{'s' if len(commits) != 1 else ''}</summary>"
         f"<ul>{commit_lis}</ul></details>"

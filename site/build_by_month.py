@@ -8,7 +8,7 @@ AI_NOTE_PREFIX = "> AI-generated note:"
 
 
 def description(slug):
-    p = Path(f"{slug}.docs.md")
+    p = Path(f"{slug}/{slug}.docs.md")
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
@@ -22,10 +22,9 @@ def description(slug):
 
 
 by_month = defaultdict(list)
-for fname, commits in gathered.items():
+for slug, commits in gathered.items():
     if not commits:
         continue
-    slug = fname.replace(".html", "")
     by_month[commits[-1]["date"][:7]].append(
         {"slug": slug, "description": description(slug), "date": commits[-1]["date"]}
     )
@@ -34,7 +33,7 @@ sections = []
 for month in sorted(by_month.keys(), reverse=True):
     items = sorted(by_month[month], key=lambda t: t["date"])
     lis = "".join(
-        f'<li><a href="{t["slug"]}.html">{t["slug"]}</a>'
+        f'<li><a href="{t["slug"]}/">{t["slug"]}</a>'
         + (f' — {t["description"]}' if t["description"] else "")
         + "</li>"
         for t in items

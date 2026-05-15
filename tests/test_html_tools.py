@@ -2,11 +2,10 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-SKIP = {"index.html", "colophon.html", "by-month.html"}
 
 
 def tool_files():
-    return [f for f in ROOT.glob("*.html") if f.name not in SKIP]
+    return list(ROOT.glob("*/index.html"))
 
 
 def test_tools_exist():

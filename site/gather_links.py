@@ -4,7 +4,6 @@ import re
 import subprocess
 from pathlib import Path
 
-SKIP = {"index.html", "colophon.html", "by-month.html"}
 AI_NOTE_PREFIX = "> AI-generated note:"
 
 
@@ -31,7 +30,7 @@ def git_log(filepath):
 
 
 def docs_description(slug):
-    p = Path(f"{slug}.docs.md")
+    p = Path(f"{slug}/{slug}.docs.md")
     if not p.exists():
         return ""
     for line in p.read_text().splitlines():
@@ -50,7 +49,7 @@ def html_title(filepath):
 
 
 def main():
-    html_files = [f for f in sorted(Path(".").glob("*.html")) if f.name not in SKIP]
+    html_files = sorted(Path(".").glob("*/index.html"))
 
     gathered = {}
     tools = []
@@ -59,8 +58,8 @@ def main():
         commits = git_log(f)
         if not commits:
             continue
-        slug = f.stem
-        gathered[f.name] = commits
+        slug = f.parent.name
+        gathered[slug] = commits
         tools.append(
             {
                 "slug": slug,
@@ -68,7 +67,7 @@ def main():
                 "description": docs_description(slug),
                 "created": commits[-1]["date"],
                 "updated": commits[0]["date"],
-                "url": f"{slug}.html",
+                "url": f"{slug}/",
             }
         )
 
