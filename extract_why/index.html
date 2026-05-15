@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>extract_why</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #222; }
+a { color: #6200ea; }
+pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+code { font-family: monospace; }
+</style>
+</head>
+<body>
+<h1>extract_why</h1>
+<p>CLI tool that mines Claude and Codex conversation transcripts and git history to surface <em>why</em> decisions were made — the intent and reasoning behind code changes.</p>
+
+<h2>Install</h2>
+<pre><code>pip install git+https://github.com/schepens83/tools</code></pre>
+
+<h2>Usage</h2>
+<pre><code>extract_why [--project PROJECT] [--since YYYY-MM-DD] [--with-git-log] [--with-context]</code></pre>
+
+<h2>Options</h2>
+<ul>
+  <li><code>--project</code> — path to the project directory (default: current directory)</li>
+  <li><code>--since</code> — only include transcripts and commits after this date</li>
+  <li><code>--with-git-log</code> — include git commit messages in the output</li>
+  <li><code>--with-context</code> — include surrounding conversation context for each decision</li>
+  <li><code>--backend</code> — transcript source: <code>claude</code>, <code>codex</code>, or <code>all</code> (default: all)</li>
+</ul>
+
+<h2>Output</h2>
+<p>Prints a structured summary of decisions and motivations extracted from transcripts, suitable for feeding into a <code>docs/WHY.md</code> generation step.</p>
+</body>
+</html>

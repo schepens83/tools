@@ -39,7 +39,7 @@
     }).join('');
   }
 
-  fetch('/tools.json')
+  fetch('tools.json')
     .then(function (r) { return r.json(); })
     .then(function (data) {
       tools = data;

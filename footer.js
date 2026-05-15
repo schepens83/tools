@@ -1,7 +1,8 @@
 (function () {
-  const parts = location.pathname.split('/');
-  const slug = parts[parts.length - 1].replace(/\.html$/, '') || 'index';
-  const base = location.pathname.replace(/[^\/]*$/, ''); // e.g. "/tools/"
+  // For URLs like /tools/json-formatter/ the slug is the last non-empty segment
+  const segments = location.pathname.replace(/\/$/, '').split('/').filter(Boolean);
+  const slug = segments[segments.length - 1] || 'index';
+  const base = '/' + segments.slice(0, -1).join('/') + '/'; // e.g. "/tools/"
   const GITHUB_REPO = 'https://github.com/schepens83/tools';
 
   // Record visit for search ranking
@@ -26,15 +27,15 @@
   footer.innerHTML =
     `<a href="${base}">← Home</a> · ` +
     `<a href="${base}colophon.html#${slug}">About this tool</a> · ` +
-    `<a href="${GITHUB_REPO}/blob/main/${slug}.html">View source</a> · ` +
-    `<a href="${GITHUB_REPO}/commits/main/${slug}.html" id="${changesId}">Changes</a>`;
+    `<a href="${GITHUB_REPO}/blob/main/${slug}/index.html">View source</a> · ` +
+    `<a href="${GITHUB_REPO}/commits/main/${slug}/index.html" id="${changesId}">Changes</a>`;
 
   document.body.appendChild(footer);
 
   fetch(base + 'dates.json')
     .then(function (r) { return r.json(); })
     .then(function (dates) {
-      const date = dates[slug + '.html'];
+      const date = dates[slug];
       if (date) {
         const a = document.getElementById(changesId);
         if (a) a.textContent = 'Changes (updated ' + date + ')';
