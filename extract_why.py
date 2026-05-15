@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Extract real user-typed messages from Claude + Codex transcripts, grouped per project.
+"""Extract user-typed messages from Claude + Codex transcripts, grouped per project.
 
 Modes:
-  extract_why.py                  list all projects with msg counts
-  extract_why.py --project NAME   dump filtered user messages for one project
-  --backend claude|codex|all      (default: all)
-  --with-context                  also include the assistant text that immediately
-                                  preceded each user message (the thing the user was
-                                  replying to). Recommended for WHY synthesis.
+  extract_why                  list all projects with msg counts
+  extract_why --project NAME   dump filtered user messages for one project
+
+Flags worth knowing:
+  --with-context     include the assistant text that immediately preceded each
+                     user message (recommended for WHY synthesis).
+  --with-git-log     also include commit messages from the project's cwd, merged
+                     chronologically with the transcript messages. Only valid
+                     with --project.
+  --since YYYY-MM-DD only include messages (and commits) from on or after DATE.
+                     Use this to refresh a WHY.md against new activity.
+  --backend          claude | codex | all (default: all)
 """
-import json, re, sys, argparse
+import json, re, sys, argparse, subprocess
 from pathlib import Path
 from collections import defaultdict
 
@@ -115,7 +121,7 @@ def _claude_resolve_cwd(jsonl_path):
     return None
 
 
-def iter_claude(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS):
+def iter_claude(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS, since=None):
     """Yield (cwd, jsonl, ts, text, src, trunc, ctx_text, ctx_trunc) per user msg."""
     if not CLAUDE_ROOT.exists():
         return
@@ -141,6 +147,9 @@ def iter_claude(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT
                 if not cleaned:
                     continue
                 ts = rec.get("timestamp") or rec.get("message", {}).get("timestamp") or ""
+                if since and ts and ts < since:
+                    last_asst = None
+                    continue
                 ctx_text, ctx_trunc = ("", False)
                 if with_context and last_asst:
                     ctx_text, ctx_trunc = trim(last_asst, max_ctx)
@@ -188,7 +197,7 @@ def _codex_resolve_cwd(jsonl_path):
     return None
 
 
-def iter_codex(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS):
+def iter_codex(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS, since=None):
     if not CODEX_ROOT.exists():
         return
     for jsonl in CODEX_ROOT.rglob("*.jsonl"):
@@ -213,6 +222,9 @@ def iter_codex(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_
             if not cleaned:
                 continue
             ts = rec.get("timestamp", "")
+            if since and ts and ts < since:
+                last_asst = None
+                continue
             ctx_text, ctx_trunc = ("", False)
             if with_context and last_asst:
                 ctx_text, ctx_trunc = trim(last_asst, max_ctx)
@@ -220,15 +232,43 @@ def iter_codex(max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_
             last_asst = None
 
 
+# ---------- Git log ----------
+
+def iter_git_log(cwd, since=None):
+    """Yield (ts, text, 'git', short_hash, False, '', False) per commit in cwd."""
+    if not Path(cwd).exists():
+        return
+    fmt = "%H%x00%aI%x00%s%x00%b%x1e"
+    cmd = ["git", "-C", cwd, "log", f"--pretty=format:{fmt}"]
+    if since:
+        # git accepts ISO timestamps fine
+        cmd.append(f"--since={since}")
+    try:
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return
+    for raw in out.split("\x1e"):
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = raw.split("\x00")
+        if len(parts) < 4:
+            continue
+        full_hash, ts, subject, body = parts[0], parts[1], parts[2], parts[3].strip()
+        short = full_hash[:8]
+        text = subject if not body else f"{subject}\n\n{body}"
+        yield (ts, text, "git", short, False, "", False)
+
+
 # ---------- Aggregation ----------
 
-def collect(backends, max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS):
+def collect(backends, max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=DEFAULT_MAX_CONTEXT_CHARS, since=None):
     by_cwd = defaultdict(list)
     if "claude" in backends:
-        for cwd, jsonl, ts, text, src, trunc, ctx, ctx_trunc in iter_claude(max_chars, with_context, max_ctx):
+        for cwd, jsonl, ts, text, src, trunc, ctx, ctx_trunc in iter_claude(max_chars, with_context, max_ctx, since=since):
             by_cwd[cwd].append((ts, text, src, jsonl.name, trunc, ctx, ctx_trunc))
     if "codex" in backends:
-        for cwd, jsonl, ts, text, src, trunc, ctx, ctx_trunc in iter_codex(max_chars, with_context, max_ctx):
+        for cwd, jsonl, ts, text, src, trunc, ctx, ctx_trunc in iter_codex(max_chars, with_context, max_ctx, since=since):
             by_cwd[cwd].append((ts, text, src, jsonl.name, trunc, ctx, ctx_trunc))
     for cwd in by_cwd:
         by_cwd[cwd].sort(key=lambda m: (m[0] or "", m[3]))
@@ -237,7 +277,8 @@ def collect(backends, max_chars=DEFAULT_MAX_CHARS, with_context=False, max_ctx=D
 
 def cmd_list(args):
     by_cwd = collect(args.backends, max_chars=args.max_msg_chars,
-                     with_context=args.with_context, max_ctx=args.max_context_chars)
+                     with_context=args.with_context, max_ctx=args.max_context_chars,
+                     since=args.since)
     rows = []
     for cwd, msgs in by_cwd.items():
         chars = sum(len(m[1]) for m in msgs)
@@ -271,7 +312,8 @@ def cmd_list(args):
 
 def cmd_project(args):
     by_cwd = collect(args.backends, max_chars=args.max_msg_chars,
-                     with_context=args.with_context, max_ctx=args.max_context_chars)
+                     with_context=args.with_context, max_ctx=args.max_context_chars,
+                     since=args.since)
     target = args.project
     candidates = [c for c in by_cwd if c == target]
     if not candidates:
@@ -285,15 +327,28 @@ def cmd_project(args):
             print(f"  {c}", file=sys.stderr)
         sys.exit(2)
     cwd = candidates[0]
-    msgs = by_cwd[cwd]
+    msgs = list(by_cwd[cwd])
+
+    git_count = 0
+    if args.with_git_log:
+        for git_msg in iter_git_log(cwd, since=args.since):
+            ts, text, src, short, trunc, ctx, ctx_trunc = git_msg
+            msgs.append((ts, text, src, short, trunc, ctx, ctx_trunc))
+            git_count += 1
+        msgs.sort(key=lambda m: (m[0] or "", m[3]))
+
     trunc = sum(1 for m in msgs if m[4])
     ctx_trunc = sum(1 for m in msgs if m[6])
-    print(f"# Filtered user messages for: {cwd}")
+    print(f"# Filtered messages for: {cwd}")
     print(f"# {len(msgs)} messages, sources: {sorted({m[2] for m in msgs})}")
     print(f"# {trunc} message(s) truncated at {args.max_msg_chars} chars")
     if args.with_context:
         with_ctx = sum(1 for m in msgs if m[5])
         print(f"# {with_ctx} message(s) with assistant context ({ctx_trunc} ctx truncated at {args.max_context_chars} chars)")
+    if args.with_git_log:
+        print(f"# {git_count} git commit(s) included")
+    if args.since:
+        print(f"# filtered to messages on/after {args.since}")
     print()
     for ts, text, src, fname, _trunc, ctx, _ctx_trunc in msgs:
         print(f"## [{ts or '?'}] ({src}) {fname}")
@@ -333,8 +388,21 @@ def main():
         default=DEFAULT_MAX_CONTEXT_CHARS,
         help=f"trim each assistant context block at N chars (default: {DEFAULT_MAX_CONTEXT_CHARS})",
     )
+    ap.add_argument(
+        "--with-git-log",
+        action="store_true",
+        help="also include commit messages from the project's cwd (only with --project)",
+    )
+    ap.add_argument(
+        "--since",
+        default=None,
+        help="filter messages and commits to those on/after ISO date (e.g. 2026-05-01)",
+    )
     args = ap.parse_args()
     args.backends = {"claude", "codex"} if args.backend == "all" else {args.backend}
+    if args.with_git_log and not args.project:
+        print("--with-git-log requires --project", file=sys.stderr)
+        sys.exit(2)
     if args.project:
         cmd_project(args)
     else:
