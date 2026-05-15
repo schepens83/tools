@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSON Explorer</title>
+  <style>
+    :root {
+      --ink: #16202a; --muted: #5f6d7a; --line: #d8dee5;
+      --panel: #ffffff; --field: #f5f7f9;
+      --blue: #005f8f; --blue-dark: #004766; --teal: #008575;
+      --green: #15803d; --red: #b34040; --orange: #c05a10;
+      --purple: #6b21a8; --sky: #0369a1;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Aptos", "Segoe UI", system-ui, sans-serif;
+      color: var(--ink); min-height: 100vh;
+      background: linear-gradient(135deg, rgba(0,95,143,0.08), transparent 40%), #f8fafb;
+    }
+    nav {
+      display: flex; align-items: center; gap: 1rem; padding: 0 1.25rem; height: 48px;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
+    }
+    .nav-title { font-size: 0.85rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .spacer { flex: 1; }
+    button {
+      font: inherit; cursor: pointer; border: 1px solid var(--line); border-radius: 6px;
+      padding: 0.45rem 0.9rem; background: var(--panel); color: var(--ink); transition: border-color 0.15s;
+    }
+    button:hover { border-color: var(--blue); }
+    button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    button.primary:hover { background: var(--blue-dark); }
+    button.sm { padding: 0.25rem 0.65rem; font-size: 0.78rem; }
+    main { max-width: 1280px; margin: 0 auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+    /* input section */
+    .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 700px) { .input-grid { grid-template-columns: 1fr; } }
+
+    .drop-zone {
+      border: 2px dashed var(--line); border-radius: 12px;
+      padding: 2rem 1.5rem; text-align: center; cursor: pointer;
+      background: var(--panel); transition: border-color 0.2s, background 0.2s;
+      display: flex; flex-direction: column; align-items: center; gap: 0.6rem;
+      min-height: 168px; justify-content: center;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--blue); background: rgba(0,95,143,0.04); }
+    .drop-zone .icon { font-size: 2rem; line-height: 1; }
+    .drop-zone h2 { font-size: 1rem; font-weight: 700; }
+    .drop-zone p  { font-size: 0.82rem; color: var(--muted); }
+    .drop-zone input[type=file] { display: none; }
+
+    .paste-panel {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      padding: 0.85rem; display: flex; flex-direction: column; gap: 0.55rem;
+    }
+    .paste-panel label { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .paste-panel textarea {
+      width: 100%; height: 110px; border: 1px solid var(--line); border-radius: 6px;
+      padding: 0.5rem; font-family: "Cascadia Code","Fira Code","Consolas",monospace;
+      font-size: 0.78rem; resize: vertical; outline: none; background: var(--field); color: var(--ink);
+    }
+    .paste-panel textarea:focus { border-color: var(--blue); }
+    .paste-panel .btn-row { display: flex; gap: 0.5rem; }
+
+    /* status */
+    .status { padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; display: none; }
+    .status.error { background: #fee2e2; color: var(--red); display: block; }
+    .status.warn  { background: #fef3c7; color: #92400e; display: block; }
+
+    /* summary cards */
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 0.75rem; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1rem; }
+    .card .label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+    .card .value { font-size: 1.2rem; font-weight: 800; color: var(--blue); word-break: break-all; }
+    .card .sub   { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+
+    /* panels */
+    .section-header {
+      font-size: 0.8rem; font-weight: 800; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.05em; padding-bottom: 0.4rem; border-bottom: 2px solid var(--line); margin-bottom: 0.75rem;
+    }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+    .hidden { display: none; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .panel-head .section-header { margin: 0; border: none; padding: 0; }
+    .btn-group { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+    /* tree */
+    .tree-wrap { font-family: "Cascadia Code","Fira Code","Consolas",monospace; font-size: 0.8rem; overflow-x: auto; }
+    .tree-node {}
+    .tree-row {
+      display: flex; align-items: baseline; gap: 0.35rem; padding: 0.22rem 0.3rem;
+      border-radius: 4px; min-height: 26px; flex-wrap: wrap; line-height: 1.5;
+    }
+    .tree-row:hover { background: var(--field); }
+    .tree-children { border-left: 1.5px solid var(--line); margin-left: 0.85rem; padding-left: 0.45rem; }
+
+    .tbtn {
+      width: 18px; height: 18px; border: none; background: none; cursor: pointer;
+      color: var(--muted); font-size: 0.65rem; padding: 0; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      vertical-align: middle; border-radius: 3px; transition: background 0.1s;
+    }
+    .tbtn:hover { background: var(--line); color: var(--ink); }
+    .tph { width: 18px; flex-shrink: 0; display: inline-block; }
+
+    .tkey { font-weight: 700; }
+    .tkey.root { color: var(--blue); font-size: 0.85rem; }
+    .tkey.wild { color: var(--muted); font-style: italic; }
+    .tcolon { color: var(--muted); }
+
+    /* type badges */
+    .badge {
+      display: inline-block; padding: 0.08rem 0.42rem; border-radius: 100px;
+      font-size: 0.67rem; font-weight: 700; white-space: nowrap;
+    }
+    .b-object  { background: #dbeafe; color: #1e40af; }
+    .b-array   { background: #dcfce7; color: #15803d; }
+    .b-string  { background: #f3e8ff; color: #6b21a8; }
+    .b-number  { background: #e0f2fe; color: #0369a1; }
+    .b-integer { background: #e0f2fe; color: #0369a1; }
+    .b-boolean { background: #fef3c7; color: #92400e; }
+    .b-null    { background: #fee2e2; color: var(--red); }
+    .b-mixed   { background: #f1f5f9; color: #475569; }
+
+    .tmeta    { font-size: 0.72rem; color: var(--muted); }
+    .tstats   { font-size: 0.72rem; color: var(--muted); }
+    .tsamples { font-size: 0.72rem; }
+    .sv       { padding: 0 0.28rem; border-radius: 3px; margin-right: 0.2rem; }
+    .sv.s     { color: var(--purple); background: rgba(107,33,168,0.08); }
+    .sv.n     { color: var(--sky);    background: rgba(3,105,161,0.08); }
+    .sv.b     { color: #92400e;       background: rgba(146,64,14,0.08); }
+    .sv.nl    { color: var(--red);    background: rgba(179,64,64,0.08); }
+
+    .occ { font-size: 0.67rem; color: var(--muted); background: var(--field);
+           border: 1px solid var(--line); border-radius: 100px; padding: 0.04rem 0.38rem; }
+    .null-count { font-size: 0.67rem; color: var(--red); background: #fee2e2;
+                  border-radius: 100px; padding: 0.04rem 0.38rem; }
+
+    /* path table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    thead th {
+      text-align: left; padding: 0.45rem 0.6rem;
+      background: var(--field); border-bottom: 2px solid var(--line);
+      font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--line); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--field); }
+    td { padding: 0.4rem 0.6rem; vertical-align: top; }
+    .path-cell { font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.74rem; color: var(--blue); word-break: break-all; }
+
+    /* markdown */
+    .copy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
+    .copy-row .section-header { margin: 0; border: none; padding: 0; }
+    .copy-fb { font-size: 0.78rem; color: var(--green); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
+    .copy-fb.show { opacity: 1; }
+    .md-box {
+      background: #16202a; color: #e2e8f0; border-radius: 8px;
+      font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.78rem;
+      line-height: 1.6; padding: 1.25rem; white-space: pre-wrap; word-break: break-word;
+      max-height: 520px; overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+<nav>
+  <span class="nav-title">JSON Explorer</span>
+  <span class="spacer"></span>
+  <button id="resetBtn" style="display:none" onclick="doReset()">Clear</button>
+</nav>
+<main>
+
+  <!-- ── Input ───────────────────────────────────────────────────────────── -->
+  <div id="inputSection">
+    <div class="input-grid">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📂</div>
+        <h2>Drop a JSON file here</h2>
+        <p>or click to browse</p>
+        <input type="file" id="fileInput" accept=".json,.jsonl,.txt" onchange="handleFile(this.files[0])">
+      </div>
+      <div class="paste-panel">
+        <label>Or paste JSON</label>
+        <textarea id="pasteInput" placeholder='{"key": "value", …}' spellcheck="false"></textarea>
+        <div class="btn-row">
+          <button class="primary" onclick="analyzeFromPaste()">Analyze</button>
+          <button onclick="loadExample()">Load example</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="statusMsg"></div>
+
+  <!-- ── Summary ─────────────────────────────────────────────────────────── -->
+  <div id="summarySection" class="hidden">
+    <div class="section-header">Overview</div>
+    <div class="summary-grid" id="summaryGrid"></div>
+  </div>
+
+  <!-- ── Tree ────────────────────────────────────────────────────────────── -->
+  <div id="treeSection" class="hidden">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="section-header">Structure Tree</div>
+        <div class="btn-group">
+          <button class="sm" onclick="expandAll()">Expand all</button>
+          <button class="sm" onclick="collapseAll()">Collapse all</button>
+          <button class="sm" onclick="expandToDepth(1)">Depth 1</button>
+          <button class="sm" onclick="expandToDepth(2)">Depth 2</button>
+          <button class="sm" onclick="expandToDepth(3)">Depth 3</button>
+        </div>
+      </div>
+      <div class="tree-wrap" id="treeContainer"></div>
+    </div>
+  </div>
+
+  <!-- ── Path table ──────────────────────────────────────────────────────── -->
+  <div id="pathSection" class="hidden">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="section-header">All Paths</div>
+        <button class="sm" onclick="togglePathTable()">Toggle</button>
+      </div>
+      <div id="pathTableWrap" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Path</th><th>Type</th><th>Occurrences</th><th>Depth</th><th>Nulls</th><th>Stats / Info</th><th>Top Values</th>
+            </tr>
+          </thead>
+          <tbody id="pathTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Markdown ─────────────────────────────────────────────────────────── -->
+  <div id="markdownSection" class="hidden">
+    <div class="panel">
+      <div class="copy-row">
+        <div class="section-header">Markdown Context Report</div>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span class="copy-fb" id="copyFb">Copied!</span>
+          <button class="primary" onclick="copyMarkdown()">Copy to Clipboard</button>
+        </div>
+      </div>
+      <div class="md-box" id="mdBox"></div>
+    </div>
+  </div>
+
+</main>
+<script>
+// ── constants ─────────────────────────────────────────────────────────────────
+const MAX_FREQ = 500;
+const MAX_NUMS = 1000;
+const EXAMPLE = {
+  store: {
+    name: "TechStore", founded: 2015, active: true,
+    location: { city: "Amsterdam", country: "NL", lat: 52.37, lng: 4.90 },
+    categories: ["Electronics", "Books", "Gadgets"],
+    products: [
+      { id: 1, name: "Laptop Pro",  price: 1299.99, inStock: true,  tags: ["laptop","pro"],   rating: 4.5 },
+      { id: 2, name: "USB Hub",     price: 29.95,   inStock: true,  tags: ["usb","hub"],       rating: 4.1 },
+      { id: 3, name: "Headphones",  price: 199.00,  inStock: false, tags: ["audio"],           rating: 4.8 },
+      { id: 4, name: "Webcam HD",   price: 89.50,   inStock: true,  tags: ["video","hd"],      rating: null },
+      { id: 5, name: "Keyboard",    price: 149.00,  inStock: false, tags: ["input","desktop"], rating: 4.3 }
+    ],
+    contact: { email: "info@techstore.nl", phone: "+31-20-1234567", twitter: "@techstore" }
+  },
+  meta: { version: 3, generated: "2024-11-15T09:00:00Z", source: "api", flags: [] }
+};
+
+// ── state ─────────────────────────────────────────────────────────────────────
+let nodeIdSeq = 0;
+let mdContent = '';
+
+// ── drag & drop ───────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+// ── entry points ──────────────────────────────────────────────────────────────
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => processJSON(e.target.result, file.name, file.size);
+  reader.onerror = () => setStatus('Failed to read file.', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+function analyzeFromPaste() {
+  const text = document.getElementById('pasteInput').value.trim();
+  if (!text) { setStatus('Paste some JSON first.', 'error'); return; }
+  processJSON(text, 'pasted JSON', text.length);
+}
+
+function loadExample() {
+  document.getElementById('pasteInput').value = JSON.stringify(EXAMPLE, null, 2);
+}
+
+function processJSON(text, source, size) {
+  setStatus('', '');
+  try {
+    // JSONL: multiple lines, each valid JSON → wrap as array
+    let data;
+    const trimmed = text.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('"')
+        || trimmed === 'true' || trimmed === 'false' || trimmed === 'null'
+        || /^-?\d/.test(trimmed)) {
+      data = JSON.parse(trimmed);
+    } else {
+      // try JSONL
+      const lines = trimmed.split('\n').filter(l => l.trim());
+      data = lines.map(l => JSON.parse(l));
+    }
+    const result = analyze(data, source, size || text.length);
+    render(result);
+    document.getElementById('inputSection').style.display = 'none';
+    document.getElementById('resetBtn').style.display = '';
+  } catch (e) {
+    setStatus('Parse error: ' + e.message, 'error');
+  }
+}
+
+// ── analysis ──────────────────────────────────────────────────────────────────
+function getType(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
+  return typeof v; // 'object', 'string', 'boolean'
+}
+
+function makeNode(key, path, depth) {
+  return {
+    key, path, depth,
+    occurrences: 0, nullCount: 0,
+    types: {},
+    freq: {}, freqSize: 0,
+    arraySizes: [],
+    numVals: [], numMin: Infinity, numMax: -Infinity, numSum: 0, numCount: 0,
+    strLenSum: 0, strCount: 0,
+    children: new Map()
+  };
+}
+
+function walkNode(data, node, budget) {
+  if (budget.left <= 0) { budget.cut = true; return; }
+  budget.left--;
+
+  node.occurrences++;
+  const t = getType(data);
+  node.types[t] = (node.types[t] || 0) + 1;
+  if (t === 'null') { node.nullCount++; return; }
+
+  if (t === 'object') {
+    for (const [k, v] of Object.entries(data)) {
+      const cp = node.path === '$' ? `$.${k}` : `${node.path}.${k}`;
+      if (!node.children.has(k)) node.children.set(k, makeNode(k, cp, node.depth + 1));
+      walkNode(v, node.children.get(k), budget);
+    }
+  } else if (t === 'array') {
+    node.arraySizes.push(data.length);
+    if (data.length > 0) {
+      const cp = `${node.path}[*]`;
+      if (!node.children.has('[*]')) node.children.set('[*]', makeNode('[*]', cp, node.depth + 1));
+      for (const item of data) walkNode(item, node.children.get('[*]'), budget);
+    }
+  } else {
+    // scalar
+    const sv = String(data);
+    if (node.freqSize < MAX_FREQ || node.freq[sv] !== undefined) {
+      if (!node.freq[sv]) { node.freq[sv] = 0; node.freqSize++; }
+      node.freq[sv]++;
+    }
+    if (typeof data === 'number') {
+      if (data < node.numMin) node.numMin = data;
+      if (data > node.numMax) node.numMax = data;
+      node.numSum += data; node.numCount++;
+      if (node.numVals.length < MAX_NUMS) node.numVals.push(data);
+    }
+    if (typeof data === 'string') { node.strLenSum += data.length; node.strCount++; }
+  }
+}
+
+function finalizeNode(node) {
+  const typeEntries = Object.entries(node.types).sort((a, b) => b[1] - a[1]);
+  node.domType = typeEntries[0]?.[0] || 'unknown';
+  node.mixed   = typeEntries.length > 1;
+  node.typeStr = typeEntries.map(([t, c]) => node.mixed ? `${t}×${c}` : t).join(', ');
+
+  if (node.numCount > 0) {
+    node.numMean = node.numSum / node.numCount;
+    const s = [...node.numVals].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    node.numMedian = s.length % 2 === 0 ? (s[m - 1] + s[m]) / 2 : s[m];
+    node.numStdev  = Math.sqrt(s.reduce((a, v) => a + (v - node.numMean) ** 2, 0) / s.length);
+    node.numP25    = s[Math.floor(s.length * 0.25)];
+    node.numP75    = s[Math.floor(s.length * 0.75)];
+    node.numSum_r  = node.numSum;
+  }
+  node.topVals  = Object.entries(node.freq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([v, c]) => ({ v, c }));
+  node.uniqueCount = node.freqSize;
+  if (node.strCount > 0) node.strAvgLen = node.strLenSum / node.strCount;
+  if (node.arraySizes.length) {
+    node.arrMin = Math.min(...node.arraySizes);
+    node.arrMax = Math.max(...node.arraySizes);
+    node.arrAvg = node.arraySizes.reduce((a, b) => a + b, 0) / node.arraySizes.length;
+  }
+  for (const c of node.children.values()) finalizeNode(c);
+}
+
+function treeStats(node, acc) {
+  acc = acc || { nodes: 0, maxDepth: 0, typeCounts: {} };
+  acc.nodes++;
+  acc.maxDepth = Math.max(acc.maxDepth, node.depth);
+  acc.typeCounts[node.domType] = (acc.typeCounts[node.domType] || 0) + 1;
+  for (const c of node.children.values()) treeStats(c, acc);
+  return acc;
+}
+
+function analyze(data, source, size) {
+  nodeIdSeq = 0;
+  const root = makeNode('(root)', '$', 0);
+  const budget = { left: 200_000, cut: false };
+  walkNode(data, root, budget);
+  finalizeNode(root);
+  const stats = treeStats(root);
+  return { source, size, root, stats, truncated: budget.cut };
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function render(r) {
+  renderSummary(r);
+  renderTree(r.root);
+  renderPathTable(r.root);
+  mdContent = buildMarkdown(r);
+  document.getElementById('mdBox').textContent = mdContent;
+  ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
+    .forEach(id => document.getElementById(id).classList.remove('hidden'));
+}
+
+// ── summary ───────────────────────────────────────────────────────────────────
+function renderSummary(r) {
+  const { root, stats, size, source, truncated } = r;
+  const tc = stats.typeCounts;
+
+  let rootVal = root.domType;
+  if (root.domType === 'object') rootVal = `object  {${root.children.size} keys}`;
+  if (root.domType === 'array')  rootVal = `array  [${root.arraySizes[0] ?? 0} items]`;
+
+  const cards = [
+    { label: 'Source',      value: source,                    sub: fmtBytes(size) },
+    { label: 'Root',        value: rootVal,                   sub: '' },
+    { label: 'Paths',       value: (stats.nodes - 1).toLocaleString(), sub: 'unique paths' },
+    { label: 'Max depth',   value: stats.maxDepth,            sub: 'nesting levels' },
+    ...(tc.object  ? [{ label: 'Objects',  value: tc.object,               sub: 'path nodes' }] : []),
+    ...(tc.array   ? [{ label: 'Arrays',   value: tc.array,                sub: 'path nodes' }] : []),
+    ...(tc.string  ? [{ label: 'Strings',  value: tc.string,               sub: 'leaf nodes' }] : []),
+    ...((tc.integer || tc.number) ? [{ label: 'Numbers', value: (tc.integer || 0) + (tc.number || 0), sub: 'leaf nodes' }] : []),
+    ...(tc.boolean ? [{ label: 'Booleans', value: tc.boolean,              sub: 'leaf nodes' }] : []),
+    ...(tc.null    ? [{ label: 'Nulls',    value: tc.null,                 sub: 'leaf nodes' }] : []),
+    ...(truncated  ? [{ label: 'Note',     value: 'Large file',            sub: 'analysis capped at 200k nodes' }] : []),
+  ];
+
+  document.getElementById('summaryGrid').innerHTML = cards.map(c =>
+    `<div class="card">
+       <div class="label">${esc(c.label)}</div>
+       <div class="value">${esc(String(c.value))}</div>
+       ${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ''}
+     </div>`
+  ).join('');
+}
+
+// ── tree ──────────────────────────────────────────────────────────────────────
+function renderTree(root) {
+  document.getElementById('treeContainer').innerHTML = buildNodeHTML(root, true);
+}
+
+function buildNodeHTML(node, isRoot) {
+  const id = nodeIdSeq++;
+  node._id = id;
+  const hasKids = node.children.size > 0;
+  const expanded = node.depth <= 1;
+
+  const toggleHtml = hasKids
+    ? `<button class="tbtn" id="tb${id}" onclick="toggleNode(${id})">${expanded ? '▼' : '▶'}</button>`
+    : `<span class="tph"></span>`;
+
+  const keyClass = isRoot ? 'root' : node.key === '[*]' ? 'wild' : '';
+  const keyHtml = `<span class="tkey ${keyClass}">${esc(node.key)}</span>`;
+
+  const typeHtml = buildBadges(node);
+  const statsHtml = buildInlineStats(node, isRoot);
+
+  let html = `<div class="tree-node" data-depth="${node.depth}">`;
+  html += `<div class="tree-row">${toggleHtml}${keyHtml}`;
+  if (!isRoot) html += `<span class="tcolon">:</span>`;
+  html += ` ${typeHtml}${statsHtml}</div>`;
+
+  if (hasKids) {
+    html += `<div id="tc${id}" class="tree-children"${expanded ? '' : ' style="display:none"'}>`;
+    for (const child of node.children.values()) html += buildNodeHTML(child, false);
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function buildBadges(node) {
+  if (!node.mixed) return `<span class="badge b-${node.domType}">${node.domType}</span>`;
+  return Object.entries(node.types)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, c]) => `<span class="badge b-${t}">${t} ×${c}</span>`)
+    .join(' ');
+}
+
+function buildInlineStats(node, isRoot) {
+  const parts = [];
+  const t = node.domType;
+
+  // occurrence count for repeated (array-item) nodes
+  if (!isRoot && node.key !== '[*]' && node.occurrences > 1)
+    parts.push(`<span class="occ">×${node.occurrences}</span>`);
+
+  // null warnings for mixed-type fields
+  if (node.nullCount > 0 && node.mixed)
+    parts.push(`<span class="null-count">${node.nullCount} null</span>`);
+
+  // [*] array items: show count
+  if (node.key === '[*]')
+    parts.push(`<span class="tmeta">${node.occurrences.toLocaleString()} items total</span>`);
+
+  if (t === 'object' && !node.mixed) {
+    const keys = [...node.children.keys()];
+    if (keys.length) {
+      const preview = keys.slice(0, 6).map(k => esc(k)).join(', ') + (keys.length > 6 ? ` +${keys.length - 6} more` : '');
+      parts.push(`<span class="tmeta">{ ${preview} }</span>`);
+    }
+  }
+
+  if (t === 'array' && node.arraySizes.length) {
+    const info = node.arrMin === node.arrMax
+      ? `[${node.arrMin} items]`
+      : `[avg ${node.arrAvg.toFixed(1)}, range ${node.arrMin}–${node.arrMax}]`;
+    parts.push(`<span class="tmeta">${info}</span>`);
+  }
+
+  if ((t === 'integer' || t === 'number') && node.numCount > 0) {
+    parts.push(`<span class="tstats">min ${fmtN(node.numMin)} · max ${fmtN(node.numMax)} · mean ${fmtN(node.numMean)}</span>`);
+    const samples = node.topVals.slice(0, 3).map(({ v }) => `<span class="sv n">${esc(v)}</span>`).join('');
+    if (samples) parts.push(`<span class="tsamples">${samples}</span>`);
+  }
+
+  if (t === 'string') {
+    const avgL = node.strAvgLen ? ` · avg ${node.strAvgLen.toFixed(0)} chars` : '';
+    parts.push(`<span class="tstats">${node.uniqueCount.toLocaleString()} unique${avgL}</span>`);
+    const samples = node.topVals.slice(0, 3).map(({ v }) =>
+      `<span class="sv s">${esc(v.length > 32 ? v.slice(0, 29) + '…' : v)}</span>`
+    ).join('');
+    if (samples) parts.push(`<span class="tsamples">${samples}</span>`);
+  }
+
+  if (t === 'boolean') {
+    const tr = (node.freq['true'] || 0);
+    const fa = (node.freq['false'] || 0);
+    const tot = tr + fa;
+    const pTrue = tot ? ((tr / tot) * 100).toFixed(0) : 0;
+    parts.push(`<span class="tstats">${pTrue}% true · ${100 - Number(pTrue)}% false</span>`);
+  }
+
+  if (t === 'null') parts.push(`<span class="tmeta">(always null)</span>`);
+
+  return parts.length ? ' ' + parts.join(' ') : '';
+}
+
+// ── tree controls ─────────────────────────────────────────────────────────────
+function toggleNode(id) {
+  const tc = document.getElementById(`tc${id}`);
+  const tb = document.getElementById(`tb${id}`);
+  if (!tc) return;
+  const show = tc.style.display === 'none';
+  tc.style.display = show ? '' : 'none';
+  if (tb) tb.textContent = show ? '▼' : '▶';
+}
+
+function expandAll() {
+  document.querySelectorAll('[id^="tc"]').forEach(el => el.style.display = '');
+  document.querySelectorAll('[id^="tb"]').forEach(btn => btn.textContent = '▼');
+}
+
+function collapseAll() {
+  document.querySelectorAll('[id^="tc"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('[id^="tb"]').forEach(btn => btn.textContent = '▶');
+  // keep root open
+  const r0 = document.getElementById('tc0');
+  const b0 = document.getElementById('tb0');
+  if (r0) r0.style.display = '';
+  if (b0) b0.textContent = '▼';
+}
+
+function expandToDepth(maxD) {
+  document.querySelectorAll('.tree-node').forEach(nodeEl => {
+    const d = parseInt(nodeEl.dataset.depth, 10);
+    // find direct child tc* and tb*
+    const tc = nodeEl.querySelector(':scope > [id^="tc"]');
+    const tb = nodeEl.querySelector(':scope > .tree-row [id^="tb"]');
+    if (!tc) return;
+    if (d < maxD) { tc.style.display = ''; if (tb) tb.textContent = '▼'; }
+    else           { tc.style.display = 'none'; if (tb) tb.textContent = '▶'; }
+  });
+}
+
+// ── path table ────────────────────────────────────────────────────────────────
+function renderPathTable(root) {
+  const rows = [];
+  (function collect(n) {
+    rows.push(n);
+    for (const c of n.children.values()) collect(c);
+  })(root);
+
+  document.getElementById('pathTableBody').innerHTML = rows.slice(1).map(n => {
+    const typeHtml = buildBadges(n);
+    const statsText = pathStats(n);
+    const topHtml = n.topVals.slice(0, 3).map(({ v, c }) =>
+      `<code style="margin-right:0.3rem">${esc(v.length > 40 ? v.slice(0, 37) + '…' : v)}</code><span style="color:var(--muted);font-size:0.7rem">×${c}</span>`
+    ).join(' ');
+    return `<tr>
+      <td class="path-cell">${esc(n.path)}</td>
+      <td>${typeHtml}</td>
+      <td>${n.occurrences.toLocaleString()}</td>
+      <td>${n.depth}</td>
+      <td>${n.nullCount ? `<span style="color:var(--red)">${n.nullCount}</span>` : '—'}</td>
+      <td style="font-size:0.75rem;white-space:nowrap;color:var(--muted)">${statsText}</td>
+      <td style="font-size:0.75rem">${topHtml || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pathStats(n) {
+  const t = n.domType;
+  if ((t === 'integer' || t === 'number') && n.numCount > 0)
+    return `min ${fmtN(n.numMin)} · max ${fmtN(n.numMax)} · mean ${fmtN(n.numMean)}`;
+  if (t === 'string')
+    return `${n.uniqueCount.toLocaleString()} unique · avg ${n.strAvgLen?.toFixed(0) ?? '?'} chars`;
+  if (t === 'boolean') {
+    const tr = n.freq['true'] || 0;
+    return `${tr} true · ${n.occurrences - tr - n.nullCount} false`;
+  }
+  if (t === 'array' && n.arraySizes.length)
+    return `avg ${n.arrAvg.toFixed(1)} items (${n.arrMin}–${n.arrMax})`;
+  if (t === 'object') return `${n.children.size} keys`;
+  return '—';
+}
+
+let pathTableShown = true;
+function togglePathTable() {
+  pathTableShown = !pathTableShown;
+  document.getElementById('pathTableWrap').style.display = pathTableShown ? '' : 'none';
+}
+
+// ── markdown builder ──────────────────────────────────────────────────────────
+function buildMarkdown(r) {
+  const { root, stats, size, source, truncated } = r;
+  const L = [];
+
+  L.push(`# JSON Structure Report: \`${source}\``);
+  L.push('');
+  L.push('## Summary');
+  L.push('');
+  L.push('| Property | Value |');
+  L.push('|---|---|');
+  L.push(`| Source | \`${source}\` |`);
+  L.push(`| Size | ${fmtBytes(size)} |`);
+  L.push(`| Root type | ${root.domType} |`);
+  L.push(`| Total paths | ${(stats.nodes - 1).toLocaleString()} |`);
+  L.push(`| Max depth | ${stats.maxDepth} |`);
+  if (truncated) L.push(`| Note | Analysis capped at 200 000 nodes |`);
+  L.push('');
+
+  L.push('## All Paths');
+  L.push('');
+  L.push('| Path | Type | Occurrences | Nulls | Stats |');
+  L.push('|---|---|---|---|---|');
+  (function row(n) {
+    if (n.path !== '$')
+      L.push(`| \`${n.path}\` | ${n.typeStr} | ${n.occurrences} | ${n.nullCount || 0} | ${pathStats(n)} |`);
+    for (const c of n.children.values()) row(c);
+  })(root);
+  L.push('');
+
+  L.push('## Field Details');
+  L.push('');
+  (function detail(n) {
+    if (n.path !== '$' && n.children.size === 0) {
+      L.push(`### \`${n.path}\``);
+      L.push('');
+      L.push(`- **Type:** ${n.typeStr}`);
+      L.push(`- **Occurrences:** ${n.occurrences}`);
+      if (n.nullCount) L.push(`- **Nulls:** ${n.nullCount}`);
+
+      const t = n.domType;
+      if ((t === 'integer' || t === 'number') && n.numCount > 0) {
+        L.push(`- **Min:** ${fmtN(n.numMin)}`);
+        L.push(`- **Max:** ${fmtN(n.numMax)}`);
+        L.push(`- **Mean:** ${fmtN(n.numMean)}`);
+        L.push(`- **Median:** ${fmtN(n.numMedian)}`);
+        L.push(`- **Std dev:** ${fmtN(n.numStdev)}`);
+        L.push(`- **P25 / P75:** ${fmtN(n.numP25)} / ${fmtN(n.numP75)}`);
+        L.push(`- **Sum:** ${fmtN(n.numSum_r)}`);
+      }
+      if (t === 'string') {
+        L.push(`- **Unique values:** ${n.uniqueCount.toLocaleString()}`);
+        if (n.strAvgLen) L.push(`- **Avg length:** ${n.strAvgLen.toFixed(1)} chars`);
+      }
+      if (t === 'boolean') {
+        const tr = n.freq['true'] || 0;
+        const tot = tr + (n.freq['false'] || 0);
+        L.push(`- **True:** ${tr} (${tot ? ((tr / tot) * 100).toFixed(1) : 0}%)`);
+        L.push(`- **False:** ${tot - tr}`);
+      }
+
+      if (n.topVals.length) {
+        L.push('');
+        L.push('**Top values:**');
+        L.push('');
+        L.push('| Value | Count |');
+        L.push('|---|---|');
+        for (const { v, c } of n.topVals) L.push(`| \`${v}\` | ${c} |`);
+      }
+      L.push('');
+    }
+    for (const c of n.children.values()) detail(c);
+  })(root);
+
+  L.push('---');
+  L.push(`*Generated by JSON Explorer — ${new Date().toISOString().slice(0, 16).replace('T', ' ')}*`);
+  return L.join('\n');
+}
+
+// ── reset ─────────────────────────────────────────────────────────────────────
+function doReset() {
+  mdContent = '';
+  ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
+    .forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById('resetBtn').style.display = 'none';
+  document.getElementById('inputSection').style.display = '';
+  document.getElementById('statusMsg').className = 'status';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('pasteInput').value = '';
+}
+
+// ── clipboard ─────────────────────────────────────────────────────────────────
+function copyMarkdown() {
+  if (!mdContent) return;
+  navigator.clipboard.writeText(mdContent)
+    .then(showCopyFb)
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = mdContent; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); showCopyFb();
+    });
+}
+function showCopyFb() {
+  const fb = document.getElementById('copyFb');
+  fb.classList.add('show'); setTimeout(() => fb.classList.remove('show'), 2000);
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg; el.className = 'status' + (type ? ' ' + type : '');
+}
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1024 / 1024).toFixed(2) + ' MB';
+}
+function fmtN(n) {
+  if (n === undefined || n === null || !isFinite(n)) return '—';
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+</script>
+</body>
+</html>
