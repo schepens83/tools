@@ -33,13 +33,22 @@ CODEX_INJECTED_PREFIXES = (
 )
 
 
-def clean(text):
+DEFAULT_MAX_CHARS = 1500
+
+
+def clean(text, max_chars=DEFAULT_MAX_CHARS):
+    """Return (cleaned_text, was_truncated). Empty string means filtered out."""
     if not text:
-        return ""
+        return "", False
     text = TAG_RE.sub("", text).strip()
     if not text or EMPTY_CMD_RE.match(text):
-        return ""
-    return text
+        return "", False
+    truncated = False
+    if max_chars and len(text) > max_chars:
+        dropped = len(text) - max_chars
+        text = text[:max_chars].rstrip() + f"\n\n[…trimmed {dropped} chars of pasted content]"
+        truncated = True
+    return text, truncated
 
 
 # ---------- Claude ----------
@@ -78,8 +87,8 @@ def _claude_resolve_cwd(jsonl_path):
     return None
 
 
-def iter_claude():
-    """Yield (cwd, jsonl_path, timestamp, cleaned_text, 'claude')."""
+def iter_claude(max_chars=DEFAULT_MAX_CHARS):
+    """Yield (cwd, jsonl_path, timestamp, cleaned_text, 'claude', truncated)."""
     if not CLAUDE_ROOT.exists():
         return
     for pdir in CLAUDE_ROOT.iterdir():
@@ -95,10 +104,10 @@ def iter_claude():
                 except Exception:
                     continue
                 txt = _claude_extract_text(rec)
-                cleaned = clean(txt)
+                cleaned, truncated = clean(txt, max_chars=max_chars)
                 if cleaned:
                     ts = rec.get("timestamp") or rec.get("message", {}).get("timestamp") or ""
-                    yield (cwd, jsonl, ts, cleaned, "claude")
+                    yield (cwd, jsonl, ts, cleaned, "claude", truncated)
 
 
 # ---------- Codex ----------
@@ -122,8 +131,8 @@ def _codex_resolve_cwd(jsonl_path):
     return None
 
 
-def iter_codex():
-    """Yield (cwd, jsonl_path, timestamp, cleaned_text, 'codex')."""
+def iter_codex(max_chars=DEFAULT_MAX_CHARS):
+    """Yield (cwd, jsonl_path, timestamp, cleaned_text, 'codex', truncated)."""
     if not CODEX_ROOT.exists():
         return
     for jsonl in CODEX_ROOT.rglob("*.jsonl"):
@@ -146,47 +155,49 @@ def iter_codex():
                 txt = c.get("text", "")
                 if _codex_is_injected(txt):
                     continue
-                cleaned = clean(txt)
+                cleaned, truncated = clean(txt, max_chars=max_chars)
                 if cleaned:
-                    yield (cwd, jsonl, rec.get("timestamp", ""), cleaned, "codex")
+                    yield (cwd, jsonl, rec.get("timestamp", ""), cleaned, "codex", truncated)
 
 
 # ---------- Aggregation ----------
 
-def collect(backends):
-    """Group all matching messages by cwd. Returns {cwd: [(ts, text, source, jsonl_name)]}."""
+def collect(backends, max_chars=DEFAULT_MAX_CHARS):
+    """Group messages by cwd. Returns {cwd: [(ts, text, source, jsonl_name, truncated)]}."""
     by_cwd = defaultdict(list)
     if "claude" in backends:
-        for cwd, jsonl, ts, text, src in iter_claude():
-            by_cwd[cwd].append((ts, text, src, jsonl.name))
+        for cwd, jsonl, ts, text, src, trunc in iter_claude(max_chars=max_chars):
+            by_cwd[cwd].append((ts, text, src, jsonl.name, trunc))
     if "codex" in backends:
-        for cwd, jsonl, ts, text, src in iter_codex():
-            by_cwd[cwd].append((ts, text, src, jsonl.name))
+        for cwd, jsonl, ts, text, src, trunc in iter_codex(max_chars=max_chars):
+            by_cwd[cwd].append((ts, text, src, jsonl.name, trunc))
     for cwd in by_cwd:
         by_cwd[cwd].sort(key=lambda m: (m[0] or "", m[3]))
     return by_cwd
 
 
 def cmd_list(args):
-    by_cwd = collect(args.backends)
+    by_cwd = collect(args.backends, max_chars=args.max_msg_chars)
     rows = []
     for cwd, msgs in by_cwd.items():
         chars = sum(len(m[1]) for m in msgs)
+        trunc = sum(1 for m in msgs if m[4])
         srcs = sorted({m[2] for m in msgs})
-        rows.append((cwd, len(msgs), chars, ",".join(srcs)))
+        rows.append((cwd, len(msgs), chars, trunc, ",".join(srcs)))
     rows.sort(key=lambda r: -r[2])
-    print(f"{'cwd':<60} {'msgs':>6} {'chars':>9} {'sources':<12}")
-    for cwd, n, ch, srcs in rows:
-        print(f"{cwd:<60} {n:>6} {ch:>9} {srcs:<12}")
+    print(f"{'cwd':<60} {'msgs':>6} {'chars':>9} {'trunc':>6} {'sources':<12}")
+    for cwd, n, ch, tr, srcs in rows:
+        print(f"{cwd:<60} {n:>6} {ch:>9} {tr:>6} {srcs:<12}")
     print()
-    print(f"projects with content: {len(rows)}")
-    print(f"total user msgs:       {sum(r[1] for r in rows)}")
+    print(f"projects with content:   {len(rows)}")
+    print(f"total user msgs:         {sum(r[1] for r in rows)}")
     total_chars = sum(r[2] for r in rows)
-    print(f"total chars:           {total_chars:,}  (~{total_chars//4:,} tokens)")
+    print(f"total chars:             {total_chars:,}  (~{total_chars//4:,} tokens)")
+    print(f"messages truncated:      {sum(r[3] for r in rows)}  (cap = {args.max_msg_chars} chars)")
 
 
 def cmd_project(args):
-    by_cwd = collect(args.backends)
+    by_cwd = collect(args.backends, max_chars=args.max_msg_chars)
     target = args.project
     candidates = [c for c in by_cwd if c == target]
     if not candidates:
@@ -201,10 +212,12 @@ def cmd_project(args):
         sys.exit(2)
     cwd = candidates[0]
     msgs = by_cwd[cwd]
+    trunc = sum(1 for m in msgs if m[4])
     print(f"# Filtered user messages for: {cwd}")
     print(f"# {len(msgs)} messages, sources: {sorted({m[2] for m in msgs})}")
+    print(f"# {trunc} message(s) truncated at {args.max_msg_chars} chars")
     print()
-    for ts, text, src, fname in msgs:
+    for ts, text, src, fname, _ in msgs:
         print(f"## [{ts or '?'}] ({src}) {fname}")
         print()
         print(text)
@@ -219,6 +232,12 @@ def main():
         choices=["claude", "codex", "all"],
         default="all",
         help="which transcript source(s) to read (default: all)",
+    )
+    ap.add_argument(
+        "--max-msg-chars",
+        type=int,
+        default=DEFAULT_MAX_CHARS,
+        help=f"trim each message at N chars (default: {DEFAULT_MAX_CHARS}; raise to keep more)",
     )
     args = ap.parse_args()
     args.backends = {"claude", "codex"} if args.backend == "all" else {args.backend}
