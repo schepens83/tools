@@ -33,7 +33,7 @@
     button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
     button.primary:hover { background: var(--blue-dark); }
     button.sm { padding: 0.25rem 0.65rem; font-size: 0.78rem; }
-    main { max-width: 1280px; margin: 0 auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; }
+    main { max-width: 1280px; margin: 0 auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem; padding-bottom: 3rem; }
 
     /* input section */
     .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -84,7 +84,7 @@
     }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
     .hidden { display: none; }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
     .panel-head .section-header { margin: 0; border: none; padding: 0; }
     .btn-group { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
@@ -93,7 +93,7 @@
     .tree-node {}
     .tree-row {
       display: flex; align-items: baseline; gap: 0.35rem; padding: 0.22rem 0.3rem;
-      border-radius: 4px; min-height: 26px; flex-wrap: wrap; line-height: 1.5;
+      border-radius: 4px; min-height: 26px; flex-wrap: wrap; line-height: 1.5; position: relative;
     }
     .tree-row:hover { background: var(--field); }
     .tree-children { border-left: 1.5px solid var(--line); margin-left: 0.85rem; padding-left: 0.45rem; }
@@ -151,7 +151,11 @@
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: var(--field); }
     td { padding: 0.4rem 0.6rem; vertical-align: top; }
-    .path-cell { font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.74rem; color: var(--blue); word-break: break-all; }
+    .path-cell {
+      font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.74rem;
+      color: var(--blue); word-break: break-all; cursor: pointer;
+    }
+    .path-cell:hover { text-decoration: underline; }
 
     /* markdown */
     .copy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
@@ -164,6 +168,78 @@
       line-height: 1.6; padding: 1.25rem; white-space: pre-wrap; word-break: break-word;
       max-height: 520px; overflow-y: auto;
     }
+
+    /* ── leaf rows are clickable ─────────────────────────────────────────── */
+    .tree-row.leaf { cursor: pointer; }
+    .tree-row.leaf:hover { background: rgba(0,95,143,0.07); }
+
+    /* copy-path button (appears on row hover) */
+    .copy-path-btn {
+      border: none; background: none; cursor: pointer; padding: 0 0.25rem;
+      color: var(--muted); font-size: 0.68rem; border-radius: 3px; opacity: 0;
+      transition: opacity 0.12s, background 0.12s; margin-left: auto; flex-shrink: 0;
+    }
+    .tree-row:hover .copy-path-btn { opacity: 0.55; }
+    .copy-path-btn:hover { opacity: 1 !important; background: var(--line); color: var(--blue); }
+
+    /* tree search highlight / dim */
+    .tree-row.match { background: rgba(0,95,143,0.13) !important; outline: 1px solid rgba(0,95,143,0.3); outline-offset: -1px; }
+    .tree-node.dim > .tree-row { opacity: 0.2; }
+
+    /* tree search box */
+    .tree-search-wrap { margin-bottom: 0.65rem; display: flex; gap: 0.4rem; }
+    .tree-search {
+      flex: 1; padding: 0.38rem 0.75rem; border: 1px solid var(--line); border-radius: 6px;
+      font: inherit; font-size: 0.82rem; background: var(--field); color: var(--ink); outline: none;
+    }
+    .tree-search:focus { border-color: var(--blue); }
+
+    /* path filter */
+    .path-filter-wrap { margin-bottom: 0.65rem; display: flex; gap: 0.4rem; }
+    .path-filter {
+      flex: 1; padding: 0.38rem 0.75rem; border: 1px solid var(--line); border-radius: 6px;
+      font: inherit; font-size: 0.82rem; background: var(--field); color: var(--ink); outline: none;
+    }
+    .path-filter:focus { border-color: var(--blue); }
+
+    /* ── value drawer ───────────────────────────────────────────────────── */
+    .value-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--panel); border-top: 2px solid var(--blue);
+      max-height: 44vh; display: flex; flex-direction: column;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.12); z-index: 100;
+      transform: translateY(100%); transition: transform 0.22s ease;
+    }
+    .value-drawer.open { transform: translateY(0); }
+    .drawer-head {
+      display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 1rem;
+      border-bottom: 1px solid var(--line); flex-shrink: 0; background: var(--field);
+    }
+    .drawer-path { font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.82rem; color: var(--blue); flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .drawer-body { overflow-y: auto; padding: 0.65rem 1rem; display: flex; flex-direction: column; gap: 0.28rem; }
+    .drawer-stats {
+      display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;
+      padding: 0.4rem 0.75rem; background: var(--field); border-radius: 6px;
+      font-size: 0.8rem; color: var(--muted); flex-shrink: 0;
+    }
+    .drawer-stats strong { color: var(--ink); }
+    .drawer-empty { color: var(--muted); font-size: 0.82rem; padding: 0.5rem 0; }
+    .val-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0; min-height: 22px; }
+    .val-bar-wrap { flex: 1; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 40px; max-width: 240px; }
+    .val-bar { height: 100%; background: var(--blue); border-radius: 3px; }
+    .val-label { font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.77rem; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .val-count { font-size: 0.71rem; color: var(--muted); white-space: nowrap; min-width: 3rem; }
+    .val-pct { font-size: 0.7rem; color: var(--muted); width: 3.5rem; text-align: right; flex-shrink: 0; }
+    .drawer-cap { font-size: 0.72rem; color: var(--muted); margin-top: 0.4rem; font-style: italic; }
+
+    /* ── copy toast ─────────────────────────────────────────────────────── */
+    .copy-toast {
+      position: fixed; bottom: 5.5rem; left: 50%; transform: translateX(-50%) translateY(10px);
+      background: var(--ink); color: #fff; padding: 0.35rem 1rem; border-radius: 6px;
+      font-size: 0.78rem; opacity: 0; transition: opacity 0.18s, transform 0.18s;
+      pointer-events: none; z-index: 200; white-space: nowrap;
+    }
+    .copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -215,6 +291,11 @@
           <button class="sm" onclick="expandToDepth(3)">Depth 3</button>
         </div>
       </div>
+      <div class="tree-search-wrap">
+        <input class="tree-search" type="search" id="treeSearchInput"
+               placeholder="Search tree by path or key…" oninput="searchTree(this.value)">
+        <button class="sm" onclick="clearTreeSearch()">Clear</button>
+      </div>
       <div class="tree-wrap" id="treeContainer"></div>
     </div>
   </div>
@@ -224,9 +305,17 @@
     <div class="panel">
       <div class="panel-head">
         <div class="section-header">All Paths</div>
-        <button class="sm" onclick="togglePathTable()">Toggle</button>
+        <div class="btn-group">
+          <button class="sm" onclick="exportCSV()">Export CSV</button>
+          <button class="sm" onclick="togglePathTable()">Toggle</button>
+        </div>
       </div>
       <div id="pathTableWrap" style="overflow-x:auto">
+        <div class="path-filter-wrap">
+          <input class="path-filter" type="search" id="pathFilterInput"
+                 placeholder="Filter paths…" oninput="filterPaths(this.value)">
+          <button class="sm" onclick="clearPathFilter()">Clear</button>
+        </div>
         <table>
           <thead>
             <tr>
@@ -254,6 +343,21 @@
   </div>
 
 </main>
+
+<!-- ── Value drawer ─────────────────────────────────────────────────────── -->
+<div id="valueDrawer" class="value-drawer">
+  <div class="drawer-head">
+    <code class="drawer-path" id="drawerPath"></code>
+    <span id="drawerType"></span>
+    <span id="drawerCount" style="font-size:0.75rem;color:var(--muted)"></span>
+    <button class="sm" onclick="closeDrawer()">✕ Close</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<!-- ── Copy toast ───────────────────────────────────────────────────────── -->
+<div id="copyToast" class="copy-toast">Path copied</div>
+
 <script>
 // ── constants ─────────────────────────────────────────────────────────────────
 const MAX_FREQ = 500;
@@ -277,7 +381,9 @@ const EXAMPLE = {
 
 // ── state ─────────────────────────────────────────────────────────────────────
 let nodeIdSeq = 0;
+let nodeMap   = {};
 let mdContent = '';
+let pathRows  = [];
 
 // ── drag & drop ───────────────────────────────────────────────────────────────
 const dz = document.getElementById('dropZone');
@@ -309,7 +415,6 @@ function loadExample() {
 function processJSON(text, source, size) {
   setStatus('', '');
   try {
-    // JSONL: multiple lines, each valid JSON → wrap as array
     let data;
     const trimmed = text.trim();
     if (trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('"')
@@ -317,7 +422,6 @@ function processJSON(text, source, size) {
         || /^-?\d/.test(trimmed)) {
       data = JSON.parse(trimmed);
     } else {
-      // try JSONL
       const lines = trimmed.split('\n').filter(l => l.trim());
       data = lines.map(l => JSON.parse(l));
     }
@@ -335,7 +439,7 @@ function getType(v) {
   if (v === null) return 'null';
   if (Array.isArray(v)) return 'array';
   if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
-  return typeof v; // 'object', 'string', 'boolean'
+  return typeof v;
 }
 
 function makeNode(key, path, depth) {
@@ -374,7 +478,6 @@ function walkNode(data, node, budget) {
       for (const item of data) walkNode(item, node.children.get('[*]'), budget);
     }
   } else {
-    // scalar
     const sv = String(data);
     if (node.freqSize < MAX_FREQ || node.freq[sv] !== undefined) {
       if (!node.freq[sv]) { node.freq[sv] = 0; node.freqSize++; }
@@ -406,7 +509,7 @@ function finalizeNode(node) {
     node.numP75    = s[Math.floor(s.length * 0.75)];
     node.numSum_r  = node.numSum;
   }
-  node.topVals  = Object.entries(node.freq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([v, c]) => ({ v, c }));
+  node.topVals     = Object.entries(node.freq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([v, c]) => ({ v, c }));
   node.uniqueCount = node.freqSize;
   if (node.strCount > 0) node.strAvgLen = node.strLenSum / node.strCount;
   if (node.arraySizes.length) {
@@ -428,6 +531,7 @@ function treeStats(node, acc) {
 
 function analyze(data, source, size) {
   nodeIdSeq = 0;
+  nodeMap   = {};
   const root = makeNode('(root)', '$', 0);
   const budget = { left: 200_000, cut: false };
   walkNode(data, root, budget);
@@ -486,8 +590,10 @@ function renderTree(root) {
 
 function buildNodeHTML(node, isRoot) {
   const id = nodeIdSeq++;
-  node._id = id;
+  node._id    = id;
+  nodeMap[id] = node;
   const hasKids = node.children.size > 0;
+  const isLeaf  = !hasKids && !isRoot;
   const expanded = node.depth <= 1;
 
   const toggleHtml = hasKids
@@ -495,15 +601,18 @@ function buildNodeHTML(node, isRoot) {
     : `<span class="tph"></span>`;
 
   const keyClass = isRoot ? 'root' : node.key === '[*]' ? 'wild' : '';
-  const keyHtml = `<span class="tkey ${keyClass}">${esc(node.key)}</span>`;
-
-  const typeHtml = buildBadges(node);
+  const keyHtml  = `<span class="tkey ${keyClass}">${esc(node.key)}</span>`;
+  const typeHtml  = buildBadges(node);
   const statsHtml = buildInlineStats(node, isRoot);
+  const copyBtn   = `<button class="copy-path-btn" onclick="copyPath('${esc(node.path)}');event.stopPropagation()" title="Copy path">⎘</button>`;
 
-  let html = `<div class="tree-node" data-depth="${node.depth}">`;
-  html += `<div class="tree-row">${toggleHtml}${keyHtml}`;
+  const rowClass = isLeaf ? 'tree-row leaf' : 'tree-row';
+  const rowClick = isLeaf ? ` onclick="showValueDrawer(${id})"` : '';
+
+  let html = `<div class="tree-node" data-depth="${node.depth}" data-path="${esc(node.path)}" data-nid="${id}">`;
+  html += `<div class="${rowClass}"${rowClick}>${toggleHtml}${keyHtml}`;
   if (!isRoot) html += `<span class="tcolon">:</span>`;
-  html += ` ${typeHtml}${statsHtml}</div>`;
+  html += ` ${typeHtml}${statsHtml}${copyBtn}</div>`;
 
   if (hasKids) {
     html += `<div id="tc${id}" class="tree-children"${expanded ? '' : ' style="display:none"'}>`;
@@ -526,15 +635,12 @@ function buildInlineStats(node, isRoot) {
   const parts = [];
   const t = node.domType;
 
-  // occurrence count for repeated (array-item) nodes
   if (!isRoot && node.key !== '[*]' && node.occurrences > 1)
     parts.push(`<span class="occ">×${node.occurrences}</span>`);
 
-  // null warnings for mixed-type fields
   if (node.nullCount > 0 && node.mixed)
     parts.push(`<span class="null-count">${node.nullCount} null</span>`);
 
-  // [*] array items: show count
   if (node.key === '[*]')
     parts.push(`<span class="tmeta">${node.occurrences.toLocaleString()} items total</span>`);
 
@@ -599,7 +705,6 @@ function expandAll() {
 function collapseAll() {
   document.querySelectorAll('[id^="tc"]').forEach(el => el.style.display = 'none');
   document.querySelectorAll('[id^="tb"]').forEach(btn => btn.textContent = '▶');
-  // keep root open
   const r0 = document.getElementById('tc0');
   const b0 = document.getElementById('tb0');
   if (r0) r0.style.display = '';
@@ -609,7 +714,6 @@ function collapseAll() {
 function expandToDepth(maxD) {
   document.querySelectorAll('.tree-node').forEach(nodeEl => {
     const d = parseInt(nodeEl.dataset.depth, 10);
-    // find direct child tc* and tb*
     const tc = nodeEl.querySelector(':scope > [id^="tc"]');
     const tb = nodeEl.querySelector(':scope > .tree-row [id^="tb"]');
     if (!tc) return;
@@ -618,22 +722,125 @@ function expandToDepth(maxD) {
   });
 }
 
+// ── tree search ───────────────────────────────────────────────────────────────
+function searchTree(q) {
+  const query = q.toLowerCase().trim();
+  if (!query) { clearTreeSearch(); return; }
+
+  document.querySelectorAll('.tree-node').forEach(el => {
+    el.classList.add('dim');
+    const row = el.querySelector(':scope > .tree-row');
+    if (row) row.classList.remove('match');
+  });
+
+  document.querySelectorAll('.tree-node').forEach(el => {
+    const path = (el.dataset.path || '').toLowerCase();
+    if (!path.includes(query)) return;
+
+    el.classList.remove('dim');
+    const row = el.querySelector(':scope > .tree-row');
+    if (row) row.classList.add('match');
+
+    const tc = el.querySelector(':scope > [id^="tc"]');
+    if (tc) tc.style.display = '';
+
+    let p = el.parentElement;
+    while (p && p.id !== 'treeContainer') {
+      if (p.classList.contains('tree-node')) p.classList.remove('dim');
+      if (p.classList.contains('tree-children')) {
+        p.style.display = '';
+        const tbId = 'tb' + p.id.slice(2);
+        const tb = document.getElementById(tbId);
+        if (tb) tb.textContent = '▼';
+      }
+      p = p.parentElement;
+    }
+  });
+}
+
+function clearTreeSearch() {
+  document.getElementById('treeSearchInput').value = '';
+  document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('dim'));
+  document.querySelectorAll('.tree-row').forEach(el => el.classList.remove('match'));
+}
+
+// ── value drawer ──────────────────────────────────────────────────────────────
+function showValueDrawer(id) {
+  const node = nodeMap[id];
+  if (!node) return;
+
+  document.getElementById('drawerPath').textContent  = node.path;
+  document.getElementById('drawerType').innerHTML    = buildBadges(node);
+  document.getElementById('drawerCount').textContent = `${node.occurrences.toLocaleString()} occurrences`;
+
+  const t      = node.domType;
+  const sorted = Object.entries(node.freq).sort((a, b) => b[1] - a[1]);
+  const total  = sorted.reduce((s, [, c]) => s + c, 0);
+
+  let html = '';
+
+  if ((t === 'integer' || t === 'number') && node.numCount > 0) {
+    html += `<div class="drawer-stats">
+      <span>min <strong>${fmtN(node.numMin)}</strong></span>
+      <span>max <strong>${fmtN(node.numMax)}</strong></span>
+      <span>mean <strong>${fmtN(node.numMean)}</strong></span>
+      <span>median <strong>${fmtN(node.numMedian)}</strong></span>
+      <span>σ <strong>${fmtN(node.numStdev)}</strong></span>
+      <span>sum <strong>${fmtN(node.numSum_r)}</strong></span>
+    </div>`;
+  }
+
+  if (t === 'string' && node.strAvgLen) {
+    html += `<div class="drawer-stats">
+      <span>unique <strong>${node.uniqueCount.toLocaleString()}</strong></span>
+      <span>avg length <strong>${node.strAvgLen.toFixed(1)} chars</strong></span>
+    </div>`;
+  }
+
+  if (t === 'null' || sorted.length === 0) {
+    html += `<div class="drawer-empty">No scalar values collected for this node.</div>`;
+  } else {
+    const maxCount = sorted[0][1];
+    const cls = t === 'string' ? 's' : t === 'boolean' ? 'b' : 'n';
+    html += sorted.map(([v, c]) => {
+      const pct  = total ? (c / total * 100).toFixed(1) : '0.0';
+      const barW = (c / maxCount * 100).toFixed(1);
+      const disp = v.length > 70 ? v.slice(0, 67) + '…' : v;
+      return `<div class="val-row">
+        <span class="val-label sv ${cls}" title="${esc(v)}">${esc(disp)}</span>
+        <div class="val-bar-wrap"><div class="val-bar" style="width:${barW}%"></div></div>
+        <span class="val-count">×${c.toLocaleString()}</span>
+        <span class="val-pct">${pct}%</span>
+      </div>`;
+    }).join('');
+    if (node.freqSize >= MAX_FREQ)
+      html += `<div class="drawer-cap">Showing first ${MAX_FREQ} unique values (cap reached)</div>`;
+  }
+
+  document.getElementById('drawerBody').innerHTML = html;
+  document.getElementById('valueDrawer').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('valueDrawer').classList.remove('open');
+}
+
 // ── path table ────────────────────────────────────────────────────────────────
 function renderPathTable(root) {
-  const rows = [];
+  pathRows = [];
   (function collect(n) {
-    rows.push(n);
+    pathRows.push(n);
     for (const c of n.children.values()) collect(c);
   })(root);
 
-  document.getElementById('pathTableBody').innerHTML = rows.slice(1).map(n => {
-    const typeHtml = buildBadges(n);
+  document.getElementById('pathTableBody').innerHTML = pathRows.slice(1).map(n => {
+    const typeHtml  = buildBadges(n);
     const statsText = pathStats(n);
-    const topHtml = n.topVals.slice(0, 3).map(({ v, c }) =>
+    const topHtml   = n.topVals.slice(0, 3).map(({ v, c }) =>
       `<code style="margin-right:0.3rem">${esc(v.length > 40 ? v.slice(0, 37) + '…' : v)}</code><span style="color:var(--muted);font-size:0.7rem">×${c}</span>`
     ).join(' ');
     return `<tr>
-      <td class="path-cell">${esc(n.path)}</td>
+      <td class="path-cell" onclick="copyPath('${esc(n.path)}')" title="Click to copy">${esc(n.path)}</td>
       <td>${typeHtml}</td>
       <td>${n.occurrences.toLocaleString()}</td>
       <td>${n.depth}</td>
@@ -660,10 +867,58 @@ function pathStats(n) {
   return '—';
 }
 
+// ── path filter ───────────────────────────────────────────────────────────────
+function filterPaths(q) {
+  const lower = q.toLowerCase();
+  document.querySelectorAll('#pathTableBody tr').forEach(tr => {
+    const path = tr.querySelector('.path-cell')?.textContent || '';
+    tr.style.display = path.toLowerCase().includes(lower) ? '' : 'none';
+  });
+}
+
+function clearPathFilter() {
+  document.getElementById('pathFilterInput').value = '';
+  filterPaths('');
+}
+
 let pathTableShown = true;
 function togglePathTable() {
   pathTableShown = !pathTableShown;
   document.getElementById('pathTableWrap').style.display = pathTableShown ? '' : 'none';
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['Path', 'Type', 'Occurrences', 'Depth', 'Nulls', 'Stats'];
+  const rows = pathRows.slice(1).map(n => [
+    n.path, n.typeStr, n.occurrences, n.depth, n.nullCount, pathStats(n)
+  ]);
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'json-paths.csv';
+  a.click();
+}
+
+// ── path copy ─────────────────────────────────────────────────────────────────
+function copyPath(path) {
+  navigator.clipboard.writeText(path)
+    .then(showCopyToast)
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = path; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); showCopyToast();
+    });
+}
+
+function showCopyToast() {
+  const t = document.getElementById('copyToast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
 }
 
 // ── markdown builder ──────────────────────────────────────────────────────────
@@ -747,7 +1002,9 @@ function buildMarkdown(r) {
 
 // ── reset ─────────────────────────────────────────────────────────────────────
 function doReset() {
-  mdContent = '';
+  mdContent = ''; pathRows = []; nodeMap = {};
+  closeDrawer();
+  clearTreeSearch();
   ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
     .forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('resetBtn').style.display = 'none';
@@ -755,9 +1012,10 @@ function doReset() {
   document.getElementById('statusMsg').className = 'status';
   document.getElementById('fileInput').value = '';
   document.getElementById('pasteInput').value = '';
+  document.getElementById('pathFilterInput').value = '';
 }
 
-// ── clipboard ─────────────────────────────────────────────────────────────────
+// ── clipboard (markdown) ──────────────────────────────────────────────────────
 function copyMarkdown() {
   if (!mdContent) return;
   navigator.clipboard.writeText(mdContent)
