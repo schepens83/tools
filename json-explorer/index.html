@@ -214,6 +214,30 @@
     /* path filter count badge */
     .filter-count { font-size: 0.72rem; color: var(--muted); font-weight: 400; margin-left: 0.4rem; }
 
+    /* jump-to-tree button in table rows */
+    .jump-btn {
+      border: none; background: none; cursor: pointer; padding: 0 0.22rem 0 0;
+      color: var(--muted); font-size: 0.7rem; opacity: 0; transition: opacity 0.1s;
+      vertical-align: baseline;
+    }
+    tbody tr:hover .jump-btn { opacity: 0.55; }
+    .jump-btn:hover { opacity: 1 !important; color: var(--blue); }
+
+    /* pulse highlight when jumping to tree node */
+    @keyframes node-pulse {
+      0%   { background: rgba(0,95,143,0.35); }
+      100% { background: transparent; }
+    }
+    .tree-row.pulse { animation: node-pulse 1.6s ease-out; }
+
+    /* markdown char / token stats */
+    .md-stats {
+      margin-top: 0.55rem; font-size: 0.78rem; color: var(--muted);
+      display: flex; gap: 1.5rem; align-items: baseline; flex-wrap: wrap;
+    }
+    .md-stats strong { color: var(--ink); }
+    .md-stats .ctx-note { font-size: 0.7rem; }
+
     /* ── value drawer ───────────────────────────────────────────────────── */
     .value-drawer {
       position: fixed; bottom: 0; left: 0; right: 0;
@@ -318,6 +342,7 @@
       <div class="panel-head">
         <div class="section-header">All Paths</div>
         <div class="btn-group">
+          <button class="sm" onclick="copyVisiblePaths()">Copy paths</button>
           <button class="sm" onclick="exportCSV()">Export CSV</button>
           <button class="sm" onclick="togglePathTable()">Toggle</button>
         </div>
@@ -328,23 +353,23 @@
             <tr>
               <th class="th-sort" onclick="setSort('path')">
                 Path<span class="si" id="si-path">↕</span>
-                <input class="col-filter" placeholder="filter…" oninput="setColFilter('path',this.value)" onclick="event.stopPropagation()">
+                <input id="cf-path" class="col-filter" placeholder="filter or /regex/" oninput="setColFilter('path',this.value)" onclick="event.stopPropagation()">
               </th>
               <th class="th-sort" onclick="setSort('type')">
                 Type<span class="si" id="si-type">↕</span>
-                <input class="col-filter" placeholder="filter…" oninput="setColFilter('type',this.value)" onclick="event.stopPropagation()">
+                <input id="cf-type" class="col-filter" placeholder="filter…" oninput="setColFilter('type',this.value)" onclick="event.stopPropagation()">
               </th>
               <th class="th-sort" onclick="setSort('occ')">
                 Occurrences<span class="si" id="si-occ">↕</span>
-                <input class="col-filter" placeholder="filter…" oninput="setColFilter('occ',this.value)" onclick="event.stopPropagation()">
+                <input id="cf-occ" class="col-filter" placeholder="filter…" oninput="setColFilter('occ',this.value)" onclick="event.stopPropagation()">
               </th>
               <th class="th-sort" onclick="setSort('depth')">
                 Depth<span class="si" id="si-depth">↕</span>
-                <input class="col-filter" placeholder="filter…" oninput="setColFilter('depth',this.value)" onclick="event.stopPropagation()">
+                <input id="cf-depth" class="col-filter" placeholder="filter…" oninput="setColFilter('depth',this.value)" onclick="event.stopPropagation()">
               </th>
               <th class="th-sort" onclick="setSort('nulls')">
                 Nulls<span class="si" id="si-nulls">↕</span>
-                <input class="col-filter" placeholder="filter…" oninput="setColFilter('nulls',this.value)" onclick="event.stopPropagation()">
+                <input id="cf-nulls" class="col-filter" placeholder="filter…" oninput="setColFilter('nulls',this.value)" onclick="event.stopPropagation()">
               </th>
               <th>Stats / Info</th>
               <th>Top Values</th>
@@ -367,6 +392,7 @@
         </div>
       </div>
       <div class="md-box" id="mdBox"></div>
+      <div class="md-stats" id="mdStats"></div>
     </div>
   </div>
 
@@ -575,6 +601,7 @@ function render(r) {
   renderPathTable(r.root);
   mdContent = buildMarkdown(r);
   document.getElementById('mdBox').textContent = mdContent;
+  updateMdStats();
   ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
     .forEach(id => document.getElementById(id).classList.remove('hidden'));
 }
@@ -869,6 +896,7 @@ function renderPathTable(root) {
     for (const c of n.children.values()) collect(c);
   })(root);
   maxOcc = Math.max(1, ...pathRows.slice(1).map(n => n.occurrences));
+  decodeAndApplyHash();
   applyTableView();
 }
 
@@ -889,19 +917,26 @@ function setColFilter(col, val) {
   applyTableView();
 }
 
+function matchFilter(val, q) {
+  if (q.startsWith('/')) {
+    try { return new RegExp(q.slice(1).replace(/\/$/, ''), 'i').test(val); }
+    catch { return true; }
+  }
+  return String(val).toLowerCase().includes(q.toLowerCase());
+}
+
 function applyTableView() {
   let rows = pathRows.slice(1);
 
   for (const [col, q] of Object.entries(colFilters)) {
     if (!q) continue;
-    const lower = q.toLowerCase();
     rows = rows.filter(n => {
       switch (col) {
-        case 'path':  return n.path.toLowerCase().includes(lower);
-        case 'type':  return n.typeStr.toLowerCase().includes(lower);
-        case 'occ':   return String(n.occurrences).includes(q);
-        case 'depth': return String(n.depth).includes(q);
-        case 'nulls': return String(n.nullCount).includes(q);
+        case 'path':  return matchFilter(n.path, q);
+        case 'type':  return matchFilter(n.typeStr, q);
+        case 'occ':   return matchFilter(String(n.occurrences), q);
+        case 'depth': return matchFilter(String(n.depth), q);
+        case 'nulls': return matchFilter(String(n.nullCount), q);
         default: return true;
       }
     });
@@ -938,7 +973,9 @@ function applyTableView() {
     const barPct = ((n.occurrences / maxOcc) * 100).toFixed(1);
     const rowCls = n.nullCount > 0 ? ' class="has-nulls"' : '';
     return `<tr${rowCls}>
-      <td class="path-cell" onclick="copyPath('${esc(n.path)}')" title="Click to copy">${esc(n.path)}</td>
+      <td class="path-cell">
+        <button class="jump-btn" onclick="jumpToTree('${esc(n.path)}');event.stopPropagation()" title="Jump to tree">↗</button><span onclick="copyPath('${esc(n.path)}')" title="Click to copy">${esc(n.path)}</span>
+      </td>
       <td>${typeHtml}</td>
       <td>${n.occurrences.toLocaleString()}
         <div class="occ-bar-wrap"><div class="occ-bar" style="width:${barPct}%"></div></div>
@@ -949,6 +986,8 @@ function applyTableView() {
       <td style="font-size:0.75rem">${topHtml || '—'}</td>
     </tr>`;
   }).join('');
+
+  encodeState();
 }
 
 function pathStats(n) {
@@ -987,6 +1026,81 @@ function exportCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = 'json-paths.csv';
   a.click();
+}
+
+// ── jump to tree ──────────────────────────────────────────────────────────────
+function jumpToTree(path) {
+  const node = document.querySelector(`.tree-node[data-path="${CSS.escape(path)}"]`);
+  if (!node) return;
+
+  let p = node.parentElement;
+  while (p && p.id !== 'treeContainer') {
+    if (p.classList.contains('tree-children')) {
+      p.style.display = '';
+      const btn = document.getElementById('tb' + p.id.slice(2));
+      if (btn) btn.textContent = '▼';
+    }
+    p = p.parentElement;
+  }
+
+  document.getElementById('treeSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => {
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const row = node.querySelector(':scope > .tree-row');
+    if (row) { row.classList.add('pulse'); setTimeout(() => row.classList.remove('pulse'), 1600); }
+  }, 280);
+}
+
+// ── copy visible paths ────────────────────────────────────────────────────────
+function copyVisiblePaths() {
+  const text = currentRows.map(n => n.path).join('\n');
+  copyPath(text);
+}
+
+// ── URL state ─────────────────────────────────────────────────────────────────
+function encodeState() {
+  const p = new URLSearchParams();
+  if (sortCol) p.set('sort', sortCol + '.' + (sortDir === 1 ? 'asc' : 'desc'));
+  for (const [col, val] of Object.entries(colFilters)) if (val) p.set(col, val);
+  const s = p.toString();
+  history.replaceState(null, '', s ? '#' + s : location.pathname + location.search);
+}
+
+function decodeAndApplyHash() {
+  if (!location.hash || location.hash === '#') return;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const sort = p.get('sort');
+  if (sort) {
+    const [col, dir] = sort.split('.');
+    if (['path','type','occ','depth','nulls'].includes(col)) {
+      sortCol = col; sortDir = dir === 'desc' ? -1 : 1;
+      const el = document.getElementById('si-' + col);
+      if (el) { el.textContent = sortDir === 1 ? '↑' : '↓'; el.classList.add('active'); }
+    }
+  }
+  for (const col of Object.keys(colFilters)) {
+    const val = p.get(col);
+    if (val) {
+      colFilters[col] = val;
+      const input = document.getElementById('cf-' + col);
+      if (input) input.value = val;
+    }
+  }
+}
+
+// ── markdown stats ────────────────────────────────────────────────────────────
+function updateMdStats() {
+  const chars  = mdContent.length;
+  const tokens = Math.round(chars / 4);
+  const ctx    = tokens < 8000   ? 'fits most LLM contexts'
+               : tokens < 32000  ? 'fits GPT-4 / Claude Haiku'
+               : tokens < 128000 ? 'fits Claude Sonnet / GPT-4o'
+               : tokens < 200000 ? 'fits Claude extended context'
+               :                   'very large — consider structure-tree only';
+  document.getElementById('mdStats').innerHTML =
+    `<span><strong>${chars.toLocaleString()}</strong> chars</span>` +
+    `<span>~<strong>${tokens.toLocaleString()}</strong> tokens (est.)</span>` +
+    `<span class="ctx-note">${ctx}</span>`;
 }
 
 // ── path copy ─────────────────────────────────────────────────────────────────
@@ -1091,6 +1205,7 @@ function doReset() {
   mdContent = ''; pathRows = []; nodeMap = {}; currentRows = [];
   sortCol = null; sortDir = 1;
   colFilters = { path: '', type: '', occ: '', depth: '', nulls: '' };
+  history.replaceState(null, '', location.pathname + location.search);
   closeDrawer();
   clearTreeSearch();
   ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
