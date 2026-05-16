@@ -143,19 +143,36 @@
     /* path table */
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     thead th {
+      position: sticky; top: 0; z-index: 2;
       text-align: left; padding: 0.45rem 0.6rem;
       background: var(--field); border-bottom: 2px solid var(--line);
-      font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; white-space: nowrap;
+      font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase;
+      vertical-align: top;
     }
+    .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+    .th-sort:hover { background: rgba(0,95,143,0.07); }
+    .si { font-size: 0.65rem; margin-left: 0.2rem; opacity: 0.4; }
+    .si.active { opacity: 1; color: var(--blue); }
+    .col-filter {
+      display: block; margin-top: 0.3rem; width: 100%;
+      padding: 0.18rem 0.38rem; border: 1px solid var(--line); border-radius: 4px;
+      font-family: inherit; font-size: 0.72rem; font-weight: 400; background: var(--panel);
+      color: var(--ink); outline: none; text-transform: none; letter-spacing: 0;
+    }
+    .col-filter:focus { border-color: var(--blue); }
     tbody tr { border-bottom: 1px solid var(--line); }
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: var(--field); }
+    tbody tr.has-nulls { background: #fff8f8; }
+    tbody tr.has-nulls:hover { background: #fee8e8; }
     td { padding: 0.4rem 0.6rem; vertical-align: top; }
     .path-cell {
       font-family: "Cascadia Code","Fira Code",monospace; font-size: 0.74rem;
       color: var(--blue); word-break: break-all; cursor: pointer;
     }
     .path-cell:hover { text-decoration: underline; }
+    .occ-bar-wrap { margin-top: 0.25rem; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+    .occ-bar { height: 100%; background: var(--blue); border-radius: 2px; opacity: 0.5; }
 
     /* markdown */
     .copy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
@@ -194,13 +211,32 @@
     }
     .tree-search:focus { border-color: var(--blue); }
 
-    /* path filter */
-    .path-filter-wrap { margin-bottom: 0.65rem; display: flex; gap: 0.4rem; }
-    .path-filter {
-      flex: 1; padding: 0.38rem 0.75rem; border: 1px solid var(--line); border-radius: 6px;
-      font: inherit; font-size: 0.82rem; background: var(--field); color: var(--ink); outline: none;
+    /* path filter count badge */
+    .filter-count { font-size: 0.72rem; color: var(--muted); font-weight: 400; margin-left: 0.4rem; }
+
+    /* jump-to-tree button in table rows */
+    .jump-btn {
+      border: none; background: none; cursor: pointer; padding: 0 0.22rem 0 0;
+      color: var(--muted); font-size: 0.7rem; opacity: 0; transition: opacity 0.1s;
+      vertical-align: baseline;
     }
-    .path-filter:focus { border-color: var(--blue); }
+    tbody tr:hover .jump-btn { opacity: 0.55; }
+    .jump-btn:hover { opacity: 1 !important; color: var(--blue); }
+
+    /* pulse highlight when jumping to tree node */
+    @keyframes node-pulse {
+      0%   { background: rgba(0,95,143,0.35); }
+      100% { background: transparent; }
+    }
+    .tree-row.pulse { animation: node-pulse 1.6s ease-out; }
+
+    /* markdown char / token stats */
+    .md-stats {
+      margin-top: 0.55rem; font-size: 0.78rem; color: var(--muted);
+      display: flex; gap: 1.5rem; align-items: baseline; flex-wrap: wrap;
+    }
+    .md-stats strong { color: var(--ink); }
+    .md-stats .ctx-note { font-size: 0.7rem; }
 
     /* ── value drawer ───────────────────────────────────────────────────── */
     .value-drawer {
@@ -306,20 +342,37 @@
       <div class="panel-head">
         <div class="section-header">All Paths</div>
         <div class="btn-group">
+          <button class="sm" onclick="copyVisiblePaths()">Copy paths</button>
           <button class="sm" onclick="exportCSV()">Export CSV</button>
           <button class="sm" onclick="togglePathTable()">Toggle</button>
         </div>
       </div>
-      <div id="pathTableWrap" style="overflow-x:auto">
-        <div class="path-filter-wrap">
-          <input class="path-filter" type="search" id="pathFilterInput"
-                 placeholder="Filter paths…" oninput="filterPaths(this.value)">
-          <button class="sm" onclick="clearPathFilter()">Clear</button>
-        </div>
+      <div id="pathTableWrap" style="overflow-x:auto;max-height:60vh;overflow-y:auto">
         <table>
           <thead>
             <tr>
-              <th>Path</th><th>Type</th><th>Occurrences</th><th>Depth</th><th>Nulls</th><th>Stats / Info</th><th>Top Values</th>
+              <th class="th-sort" onclick="setSort('path')">
+                Path<span class="si" id="si-path">↕</span>
+                <input id="cf-path" class="col-filter" placeholder="filter or /regex/" oninput="setColFilter('path',this.value)" onclick="event.stopPropagation()">
+              </th>
+              <th class="th-sort" onclick="setSort('type')">
+                Type<span class="si" id="si-type">↕</span>
+                <input id="cf-type" class="col-filter" placeholder="filter…" oninput="setColFilter('type',this.value)" onclick="event.stopPropagation()">
+              </th>
+              <th class="th-sort" onclick="setSort('occ')">
+                Occurrences<span class="si" id="si-occ">↕</span>
+                <input id="cf-occ" class="col-filter" placeholder="filter…" oninput="setColFilter('occ',this.value)" onclick="event.stopPropagation()">
+              </th>
+              <th class="th-sort" onclick="setSort('depth')">
+                Depth<span class="si" id="si-depth">↕</span>
+                <input id="cf-depth" class="col-filter" placeholder="filter…" oninput="setColFilter('depth',this.value)" onclick="event.stopPropagation()">
+              </th>
+              <th class="th-sort" onclick="setSort('nulls')">
+                Nulls<span class="si" id="si-nulls">↕</span>
+                <input id="cf-nulls" class="col-filter" placeholder="filter…" oninput="setColFilter('nulls',this.value)" onclick="event.stopPropagation()">
+              </th>
+              <th>Stats / Info</th>
+              <th>Top Values</th>
             </tr>
           </thead>
           <tbody id="pathTableBody"></tbody>
@@ -339,6 +392,7 @@
         </div>
       </div>
       <div class="md-box" id="mdBox"></div>
+      <div class="md-stats" id="mdStats"></div>
     </div>
   </div>
 
@@ -547,6 +601,7 @@ function render(r) {
   renderPathTable(r.root);
   mdContent = buildMarkdown(r);
   document.getElementById('mdBox').textContent = mdContent;
+  updateMdStats();
   ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
     .forEach(id => document.getElementById(id).classList.remove('hidden'));
 }
@@ -826,29 +881,113 @@ function closeDrawer() {
 }
 
 // ── path table ────────────────────────────────────────────────────────────────
+let sortCol     = null;
+let sortDir     = 1;
+let colFilters  = { path: '', type: '', occ: '', depth: '', nulls: '' };
+let currentRows = [];
+let maxOcc      = 1;
+
 function renderPathTable(root) {
   pathRows = [];
+  sortCol = null; sortDir = 1;
+  colFilters = { path: '', type: '', occ: '', depth: '', nulls: '' };
   (function collect(n) {
     pathRows.push(n);
     for (const c of n.children.values()) collect(c);
   })(root);
+  maxOcc = Math.max(1, ...pathRows.slice(1).map(n => n.occurrences));
+  decodeAndApplyHash();
+  applyTableView();
+}
 
-  document.getElementById('pathTableBody').innerHTML = pathRows.slice(1).map(n => {
+function setSort(col) {
+  if (sortCol === col) sortDir = -sortDir;
+  else { sortCol = col; sortDir = 1; }
+  ['path','type','occ','depth','nulls'].forEach(c => {
+    const el = document.getElementById('si-' + c);
+    if (!el) return;
+    if (c === sortCol) { el.textContent = sortDir === 1 ? '↑' : '↓'; el.classList.add('active'); }
+    else               { el.textContent = '↕'; el.classList.remove('active'); }
+  });
+  applyTableView();
+}
+
+function setColFilter(col, val) {
+  colFilters[col] = val;
+  applyTableView();
+}
+
+function matchFilter(val, q) {
+  if (q.startsWith('/')) {
+    try { return new RegExp(q.slice(1).replace(/\/$/, ''), 'i').test(val); }
+    catch { return true; }
+  }
+  return String(val).toLowerCase().includes(q.toLowerCase());
+}
+
+function applyTableView() {
+  let rows = pathRows.slice(1);
+
+  for (const [col, q] of Object.entries(colFilters)) {
+    if (!q) continue;
+    rows = rows.filter(n => {
+      switch (col) {
+        case 'path':  return matchFilter(n.path, q);
+        case 'type':  return matchFilter(n.typeStr, q);
+        case 'occ':   return matchFilter(String(n.occurrences), q);
+        case 'depth': return matchFilter(String(n.depth), q);
+        case 'nulls': return matchFilter(String(n.nullCount), q);
+        default: return true;
+      }
+    });
+  }
+
+  if (sortCol) {
+    rows.sort((a, b) => {
+      let va, vb;
+      switch (sortCol) {
+        case 'path':  va = a.path;        vb = b.path;        break;
+        case 'type':  va = a.typeStr;     vb = b.typeStr;     break;
+        case 'occ':   va = a.occurrences; vb = b.occurrences; break;
+        case 'depth': va = a.depth;       vb = b.depth;       break;
+        case 'nulls': va = a.nullCount;   vb = b.nullCount;   break;
+        default: return 0;
+      }
+      if (typeof va === 'string') return va.localeCompare(vb) * sortDir;
+      return (va - vb) * sortDir;
+    });
+  }
+
+  currentRows = rows;
+  const totalAll = pathRows.length - 1;
+  const hdr = document.querySelector('#pathSection .section-header');
+  if (hdr) hdr.innerHTML = `All Paths${rows.length < totalAll
+    ? ` <span class="filter-count">${rows.length} / ${totalAll}</span>` : ''}`;
+
+  document.getElementById('pathTableBody').innerHTML = rows.map(n => {
     const typeHtml  = buildBadges(n);
     const statsText = pathStats(n);
     const topHtml   = n.topVals.slice(0, 3).map(({ v, c }) =>
       `<code style="margin-right:0.3rem">${esc(v.length > 40 ? v.slice(0, 37) + '…' : v)}</code><span style="color:var(--muted);font-size:0.7rem">×${c}</span>`
     ).join(' ');
-    return `<tr>
-      <td class="path-cell" onclick="copyPath('${esc(n.path)}')" title="Click to copy">${esc(n.path)}</td>
+    const barPct = ((n.occurrences / maxOcc) * 100).toFixed(1);
+    const rowCls = n.nullCount > 0 ? ' class="has-nulls"' : '';
+    return `<tr${rowCls}>
+      <td class="path-cell">
+        <button class="jump-btn" onclick="jumpToTree('${esc(n.path)}');event.stopPropagation()" title="Jump to tree">↗</button><span onclick="copyPath('${esc(n.path)}')" title="Click to copy">${esc(n.path)}</span>
+      </td>
       <td>${typeHtml}</td>
-      <td>${n.occurrences.toLocaleString()}</td>
+      <td>${n.occurrences.toLocaleString()}
+        <div class="occ-bar-wrap"><div class="occ-bar" style="width:${barPct}%"></div></div>
+      </td>
       <td>${n.depth}</td>
       <td>${n.nullCount ? `<span style="color:var(--red)">${n.nullCount}</span>` : '—'}</td>
       <td style="font-size:0.75rem;white-space:nowrap;color:var(--muted)">${statsText}</td>
       <td style="font-size:0.75rem">${topHtml || '—'}</td>
     </tr>`;
   }).join('');
+
+  encodeState();
 }
 
 function pathStats(n) {
@@ -867,20 +1006,6 @@ function pathStats(n) {
   return '—';
 }
 
-// ── path filter ───────────────────────────────────────────────────────────────
-function filterPaths(q) {
-  const lower = q.toLowerCase();
-  document.querySelectorAll('#pathTableBody tr').forEach(tr => {
-    const path = tr.querySelector('.path-cell')?.textContent || '';
-    tr.style.display = path.toLowerCase().includes(lower) ? '' : 'none';
-  });
-}
-
-function clearPathFilter() {
-  document.getElementById('pathFilterInput').value = '';
-  filterPaths('');
-}
-
 let pathTableShown = true;
 function togglePathTable() {
   pathTableShown = !pathTableShown;
@@ -890,10 +1015,10 @@ function togglePathTable() {
 // ── CSV export ────────────────────────────────────────────────────────────────
 function exportCSV() {
   const headers = ['Path', 'Type', 'Occurrences', 'Depth', 'Nulls', 'Stats'];
-  const rows = pathRows.slice(1).map(n => [
+  const data = currentRows.map(n => [
     n.path, n.typeStr, n.occurrences, n.depth, n.nullCount, pathStats(n)
   ]);
-  const csv = [headers, ...rows]
+  const csv = [headers, ...data]
     .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
     .join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -901,6 +1026,81 @@ function exportCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = 'json-paths.csv';
   a.click();
+}
+
+// ── jump to tree ──────────────────────────────────────────────────────────────
+function jumpToTree(path) {
+  const node = document.querySelector(`.tree-node[data-path="${CSS.escape(path)}"]`);
+  if (!node) return;
+
+  let p = node.parentElement;
+  while (p && p.id !== 'treeContainer') {
+    if (p.classList.contains('tree-children')) {
+      p.style.display = '';
+      const btn = document.getElementById('tb' + p.id.slice(2));
+      if (btn) btn.textContent = '▼';
+    }
+    p = p.parentElement;
+  }
+
+  document.getElementById('treeSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => {
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const row = node.querySelector(':scope > .tree-row');
+    if (row) { row.classList.add('pulse'); setTimeout(() => row.classList.remove('pulse'), 1600); }
+  }, 280);
+}
+
+// ── copy visible paths ────────────────────────────────────────────────────────
+function copyVisiblePaths() {
+  const text = currentRows.map(n => n.path).join('\n');
+  copyPath(text);
+}
+
+// ── URL state ─────────────────────────────────────────────────────────────────
+function encodeState() {
+  const p = new URLSearchParams();
+  if (sortCol) p.set('sort', sortCol + '.' + (sortDir === 1 ? 'asc' : 'desc'));
+  for (const [col, val] of Object.entries(colFilters)) if (val) p.set(col, val);
+  const s = p.toString();
+  history.replaceState(null, '', s ? '#' + s : location.pathname + location.search);
+}
+
+function decodeAndApplyHash() {
+  if (!location.hash || location.hash === '#') return;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const sort = p.get('sort');
+  if (sort) {
+    const [col, dir] = sort.split('.');
+    if (['path','type','occ','depth','nulls'].includes(col)) {
+      sortCol = col; sortDir = dir === 'desc' ? -1 : 1;
+      const el = document.getElementById('si-' + col);
+      if (el) { el.textContent = sortDir === 1 ? '↑' : '↓'; el.classList.add('active'); }
+    }
+  }
+  for (const col of Object.keys(colFilters)) {
+    const val = p.get(col);
+    if (val) {
+      colFilters[col] = val;
+      const input = document.getElementById('cf-' + col);
+      if (input) input.value = val;
+    }
+  }
+}
+
+// ── markdown stats ────────────────────────────────────────────────────────────
+function updateMdStats() {
+  const chars  = mdContent.length;
+  const tokens = Math.round(chars / 4);
+  const ctx    = tokens < 8000   ? 'fits most LLM contexts'
+               : tokens < 32000  ? 'fits GPT-4 / Claude Haiku'
+               : tokens < 128000 ? 'fits Claude Sonnet / GPT-4o'
+               : tokens < 200000 ? 'fits Claude extended context'
+               :                   'very large — consider structure-tree only';
+  document.getElementById('mdStats').innerHTML =
+    `<span><strong>${chars.toLocaleString()}</strong> chars</span>` +
+    `<span>~<strong>${tokens.toLocaleString()}</strong> tokens (est.)</span>` +
+    `<span class="ctx-note">${ctx}</span>`;
 }
 
 // ── path copy ─────────────────────────────────────────────────────────────────
@@ -1002,7 +1202,10 @@ function buildMarkdown(r) {
 
 // ── reset ─────────────────────────────────────────────────────────────────────
 function doReset() {
-  mdContent = ''; pathRows = []; nodeMap = {};
+  mdContent = ''; pathRows = []; nodeMap = {}; currentRows = [];
+  sortCol = null; sortDir = 1;
+  colFilters = { path: '', type: '', occ: '', depth: '', nulls: '' };
+  history.replaceState(null, '', location.pathname + location.search);
   closeDrawer();
   clearTreeSearch();
   ['summarySection', 'treeSection', 'pathSection', 'markdownSection']
@@ -1012,7 +1215,7 @@ function doReset() {
   document.getElementById('statusMsg').className = 'status';
   document.getElementById('fileInput').value = '';
   document.getElementById('pasteInput').value = '';
-  document.getElementById('pathFilterInput').value = '';
+  document.querySelectorAll('.col-filter').forEach(el => el.value = '');
 }
 
 // ── clipboard (markdown) ──────────────────────────────────────────────────────
