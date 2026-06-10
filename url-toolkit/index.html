@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URL Toolkit</title>
+<style>
+:root {
+  --ink: #1f2933;
+  --muted: #66727f;
+  --line: #d7dde3;
+  --panel: #ffffff;
+  --field: #f6f8fa;
+  --accent: #006d77;
+  --accent-dark: #00545c;
+  --danger: #b42318;
+  --ok: #0f7b45;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  margin: 0;
+  background: #f7f9fb;
+}
+main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+h1 { margin: 0 0 0.35rem; font-size: 1.8rem; }
+p { color: var(--muted); margin: 0 0 1rem; line-height: 1.5; }
+label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; }
+textarea, input, select {
+  width: 100%;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+}
+textarea, input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+textarea { min-height: 108px; padding: 0.65rem; resize: vertical; }
+input, select { padding: 0.45rem 0.55rem; }
+button {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-dark); }
+button.danger { color: var(--danger); }
+.toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.6rem 0 1rem; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr); gap: 1rem; align-items: start; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.panel h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.full { grid-column: 1 / -1; }
+.status {
+  min-height: 1.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+.status.error { color: var(--danger); }
+.status.ok { color: var(--ok); }
+.output {
+  min-height: 104px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--field);
+  padding: 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+}
+.query-head, .query-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(120px, 1.3fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+.query-head {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+.query-row { margin-bottom: 0.45rem; }
+.small { font-size: 0.82rem; color: var(--muted); }
+.stack { display: grid; gap: 1rem; }
+.encode-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+.copy-note { font-size: 0.82rem; color: var(--ok); opacity: 0; transition: opacity 0.18s; }
+.copy-note.show { opacity: 1; }
+@media (max-width: 760px) {
+  main { padding: 1rem; }
+  .grid, .fields, .encode-grid { grid-template-columns: 1fr; }
+  .query-head { display: none; }
+  .query-row { grid-template-columns: 1fr; border: 1px solid var(--line); border-radius: 6px; padding: 0.55rem; background: var(--field); }
+  button { width: 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>URL Toolkit</h1>
+  <p>Parse URLs, edit query parameters, rebuild links, and encode or decode URL-safe text in the browser.</p>
+
+  <section class="panel">
+    <label for="urlInput">URL</label>
+    <textarea id="urlInput" spellcheck="false" placeholder="https://example.com/docs/search?q=url%20tools&debug=true#results"></textarea>
+    <div class="toolbar">
+      <button class="primary" id="parseBtn">Parse URL</button>
+      <button id="sampleBtn">Load sample</button>
+      <button id="clearBtn">Clear</button>
+      <span id="parseStatus" class="status"></span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Parts</h2>
+      <div class="fields">
+        <div>
+          <label for="protocol">Protocol</label>
+          <input id="protocol" spellcheck="false" placeholder="https:">
+        </div>
+        <div>
+          <label for="host">Host</label>
+          <input id="host" spellcheck="false" placeholder="example.com">
+        </div>
+        <div>
+          <label for="port">Port</label>
+          <input id="port" spellcheck="false" placeholder="443">
+        </div>
+        <div>
+          <label for="username">Username</label>
+          <input id="username" spellcheck="false">
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" spellcheck="false" type="password">
+        </div>
+        <div>
+          <label for="hash">Hash</label>
+          <input id="hash" spellcheck="false" placeholder="#section">
+        </div>
+        <div class="full">
+          <label for="pathname">Path</label>
+          <input id="pathname" spellcheck="false" placeholder="/docs/search">
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="primary" id="buildBtn">Build URL</button>
+        <button id="copyUrlBtn">Copy URL</button>
+        <span id="copyNote" class="copy-note">Copied</span>
+      </div>
+      <label>Built URL</label>
+      <div id="builtUrl" class="output"></div>
+      <div id="buildStatus" class="status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Query Parameters</h2>
+      <div class="query-head">
+        <div>Key</div>
+        <div>Value</div>
+        <div></div>
+      </div>
+      <div id="queryRows"></div>
+      <div class="toolbar">
+        <button id="addParamBtn">Add parameter</button>
+        <button id="sortParamsBtn">Sort by key</button>
+      </div>
+      <p class="small">Duplicate keys are preserved. Empty keys are ignored when building a URL.</p>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:1rem">
+    <h2>Encode / Decode</h2>
+    <div class="encode-grid">
+      <select id="codecMode" aria-label="Encoding mode">
+        <option value="component">URL component</option>
+        <option value="full">Full URL</option>
+      </select>
+      <div class="toolbar" style="margin:0">
+        <button id="encodeBtn">Encode</button>
+        <button id="decodeBtn">Decode</button>
+        <button id="copyCodecBtn">Copy result</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div>
+        <label for="codecInput">Input</label>
+        <textarea id="codecInput" spellcheck="false" placeholder="name=Ada Lovelace&role=R&D"></textarea>
+      </div>
+      <div>
+        <label>Result</label>
+        <div id="codecOutput" class="output"></div>
+        <div id="codecStatus" class="status"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const urlInput = document.getElementById('urlInput');
+const parseStatus = document.getElementById('parseStatus');
+const buildStatus = document.getElementById('buildStatus');
+const builtUrl = document.getElementById('builtUrl');
+const queryRows = document.getElementById('queryRows');
+const copyNote = document.getElementById('copyNote');
+const fields = {
+  protocol: document.getElementById('protocol'),
+  host: document.getElementById('host'),
+  port: document.getElementById('port'),
+  username: document.getElementById('username'),
+  password: document.getElementById('password'),
+  pathname: document.getElementById('pathname'),
+  hash: document.getElementById('hash')
+};
+
+function setStatus(el, message, type) {
+  el.textContent = message || '';
+  el.className = type ? 'status ' + type : 'status';
+}
+
+function normalizeUrl(raw) {
+  const value = raw.trim();
+  if (!value) throw new Error('Enter a URL to parse.');
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return new URL(value);
+  return new URL(value, window.location.origin);
+}
+
+function setParts(url) {
+  fields.protocol.value = url.protocol;
+  fields.host.value = url.hostname;
+  fields.port.value = url.port;
+  fields.username.value = decodeURIComponent(url.username || '');
+  fields.password.value = decodeURIComponent(url.password || '');
+  fields.pathname.value = decodeURIComponent(url.pathname || '/');
+  fields.hash.value = url.hash ? decodeURIComponent(url.hash) : '';
+  queryRows.innerHTML = '';
+  const entries = Array.from(url.searchParams.entries());
+  if (entries.length) {
+    entries.forEach(([key, value]) => addParamRow(key, value));
+  } else {
+    addParamRow('', '');
+  }
+}
+
+function parseUrl() {
+  try {
+    const url = normalizeUrl(urlInput.value);
+    setParts(url);
+    builtUrl.textContent = url.href;
+    const assumed = /^[a-z][a-z0-9+.-]*:/i.test(urlInput.value.trim()) ? '' : ' Relative URL parsed with this page as the base.';
+    setStatus(parseStatus, 'Parsed successfully.' + assumed, 'ok');
+    setStatus(buildStatus, '', '');
+  } catch (error) {
+    setStatus(parseStatus, error.message, 'error');
+  }
+}
+
+function addParamRow(key, value) {
+  const row = document.createElement('div');
+  row.className = 'query-row';
+  row.innerHTML =
+    '<input class="param-key" spellcheck="false" placeholder="key">' +
+    '<input class="param-value" spellcheck="false" placeholder="value">' +
+    '<button class="danger" type="button">Remove</button>';
+  row.querySelector('.param-key').value = key;
+  row.querySelector('.param-value').value = value;
+  row.querySelector('button').addEventListener('click', function () {
+    row.remove();
+    if (!queryRows.children.length) addParamRow('', '');
+    buildUrl();
+  });
+  row.querySelectorAll('input').forEach(function (input) {
+    input.addEventListener('input', buildUrl);
+  });
+  queryRows.appendChild(row);
+}
+
+function collectParams() {
+  return Array.from(queryRows.querySelectorAll('.query-row')).map(function (row) {
+    return {
+      key: row.querySelector('.param-key').value,
+      value: row.querySelector('.param-value').value
+    };
+  }).filter(function (param) {
+    return param.key.trim() !== '';
+  });
+}
+
+function buildUrl() {
+  try {
+    const protocol = fields.protocol.value.trim() || 'https:';
+    const host = fields.host.value.trim();
+    if (!host) throw new Error('Host is required to build an absolute URL.');
+    const url = new URL(protocol.endsWith(':') ? protocol + '//' + host : protocol + '://' + host);
+    url.port = fields.port.value.trim();
+    url.username = fields.username.value;
+    url.password = fields.password.value;
+    url.pathname = fields.pathname.value.trim() || '/';
+    url.hash = fields.hash.value.trim();
+    url.search = '';
+    collectParams().forEach(function (param) {
+      url.searchParams.append(param.key, param.value);
+    });
+    builtUrl.textContent = url.href;
+    urlInput.value = url.href;
+    setStatus(buildStatus, 'URL built successfully.', 'ok');
+    setStatus(parseStatus, '', '');
+    return url.href;
+  } catch (error) {
+    setStatus(buildStatus, error.message, 'error');
+    return '';
+  }
+}
+
+function copyText(text, statusEl) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(function () {
+    if (statusEl === copyNote) {
+      copyNote.classList.add('show');
+      setTimeout(function () { copyNote.classList.remove('show'); }, 1300);
+    } else {
+      setStatus(statusEl, 'Copied result.', 'ok');
+    }
+  }).catch(function () {
+    setStatus(statusEl, 'Clipboard access was blocked by the browser.', 'error');
+  });
+}
+
+document.getElementById('parseBtn').addEventListener('click', parseUrl);
+document.getElementById('sampleBtn').addEventListener('click', function () {
+  urlInput.value = 'https://docs.example.dev:8443/search?q=url%20toolkit&tag=javascript&tag=browser#results';
+  parseUrl();
+});
+document.getElementById('clearBtn').addEventListener('click', function () {
+  urlInput.value = '';
+  builtUrl.textContent = '';
+  Object.values(fields).forEach(function (field) { field.value = ''; });
+  queryRows.innerHTML = '';
+  addParamRow('', '');
+  setStatus(parseStatus, '', '');
+  setStatus(buildStatus, '', '');
+});
+document.getElementById('buildBtn').addEventListener('click', buildUrl);
+document.getElementById('copyUrlBtn').addEventListener('click', function () {
+  copyText(builtUrl.textContent || buildUrl(), copyNote);
+});
+document.getElementById('addParamBtn').addEventListener('click', function () {
+  addParamRow('', '');
+});
+document.getElementById('sortParamsBtn').addEventListener('click', function () {
+  const params = collectParams().sort(function (a, b) {
+    return a.key.localeCompare(b.key) || a.value.localeCompare(b.value);
+  });
+  queryRows.innerHTML = '';
+  (params.length ? params : [{ key: '', value: '' }]).forEach(function (param) {
+    addParamRow(param.key, param.value);
+  });
+  buildUrl();
+});
+Object.values(fields).forEach(function (field) {
+  field.addEventListener('input', buildUrl);
+});
+
+const codecInput = document.getElementById('codecInput');
+const codecOutput = document.getElementById('codecOutput');
+const codecMode = document.getElementById('codecMode');
+const codecStatus = document.getElementById('codecStatus');
+
+document.getElementById('encodeBtn').addEventListener('click', function () {
+  const value = codecInput.value;
+  codecOutput.textContent = codecMode.value === 'full' ? encodeURI(value) : encodeURIComponent(value);
+  setStatus(codecStatus, 'Encoded.', 'ok');
+});
+document.getElementById('decodeBtn').addEventListener('click', function () {
+  try {
+    const value = codecInput.value.replace(/\+/g, codecMode.value === 'component' ? ' ' : '+');
+    codecOutput.textContent = codecMode.value === 'full' ? decodeURI(value) : decodeURIComponent(value);
+    setStatus(codecStatus, 'Decoded.', 'ok');
+  } catch (error) {
+    setStatus(codecStatus, error.message, 'error');
+  }
+});
+document.getElementById('copyCodecBtn').addEventListener('click', function () {
+  copyText(codecOutput.textContent, codecStatus);
+});
+
+addParamRow('', '');
+</script>
+</body>
+</html>

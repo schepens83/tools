@@ -7,6 +7,7 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 ### Recently added
 
 - [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
+- [URL Toolkit](https://schepens83.github.io/tools/url-toolkit/)
 - [CSV File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
@@ -15,6 +16,7 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 ### Recently updated
 
 - [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
+- [URL Toolkit](https://schepens83.github.io/tools/url-toolkit/)
 - [CSV File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
@@ -30,6 +32,7 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 - [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 - [Regex Tester](https://schepens83.github.io/tools/regex-tester/)
+- [URL Toolkit](https://schepens83.github.io/tools/url-toolkit/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 
 <!-- tools stops -->
