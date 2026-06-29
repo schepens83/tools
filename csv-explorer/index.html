@@ -116,6 +116,12 @@
     }
     .copy-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
     .copy-row .section-header { margin: 0; border: none; padding: 0; }
+    .report-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end; }
+    .privacy-toggle {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-size: 0.78rem; color: var(--muted); user-select: none;
+    }
+    .privacy-toggle input { width: 1rem; height: 1rem; accent-color: var(--blue); }
     .copy-feedback { font-size: 0.78rem; color: var(--green); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
     .copy-feedback.show { opacity: 1; }
 
@@ -209,7 +215,11 @@
     <div class="panel">
       <div class="copy-row">
         <div class="section-header">Markdown Context Report</div>
-        <div style="display:flex;align-items:center;gap:0.75rem">
+        <div class="report-actions">
+          <label class="privacy-toggle" title="Replace raw top values and samples with shape-preserving descriptors">
+            <input type="checkbox" id="privacyToggle" onchange="refreshReportPrivacy()">
+            Hide raw values
+          </label>
           <span class="copy-feedback" id="copyFeedback">Copied!</span>
           <button class="primary" onclick="copyMarkdown()">Copy to Clipboard</button>
         </div>
@@ -232,16 +242,19 @@ dz.addEventListener('drop', e => {
 
 let mdContent = '';
 let currentWorkbook = null;
+let currentAnalysis = null;
 
 function reset() {
   mdContent = '';
   currentWorkbook = null;
+  currentAnalysis = null;
   ['sheetSection','summarySection','columnSection','markdownSection'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('resetBtn').style.display = 'none';
   document.getElementById('dropZone').style.display = '';
   document.getElementById('statusMsg').className = 'status';
   document.getElementById('progressWrap').style.display = 'none';
   document.getElementById('fileInput').value = '';
+  document.getElementById('privacyToggle').checked = false;
 }
 
 function setStatus(msg, type) {
@@ -558,12 +571,25 @@ function selectSheet(sheetIndex) {
 }
 
 function renderActiveSheet(r) {
+  currentAnalysis = r;
+  const hideRawValues = shouldHideRawValues();
   renderSummary(r);
-  renderColumns(r);
-  mdContent = currentWorkbook ? buildWorkbookMarkdown(currentWorkbook, r.sheetIndex) : buildMarkdown(r);
+  renderColumns(r, hideRawValues);
+  mdContent = currentWorkbook
+    ? buildWorkbookMarkdown(currentWorkbook, r.sheetIndex, hideRawValues)
+    : buildMarkdown(r, hideRawValues);
   document.getElementById('mdBox').textContent = mdContent;
   ['summarySection','columnSection','markdownSection'].forEach(id =>
     document.getElementById(id).classList.remove('hidden'));
+}
+
+function refreshReportPrivacy() {
+  if (currentAnalysis) renderActiveSheet(currentAnalysis);
+}
+
+function shouldHideRawValues() {
+  const toggle = document.getElementById('privacyToggle');
+  return toggle ? toggle.checked : false;
 }
 
 function renderSummary(r) {
@@ -585,12 +611,12 @@ function renderSummary(r) {
 
 function typeClass(t) { return `type-badge type-${t}`; }
 
-function renderColumns(r) {
+function renderColumns(r, hideRawValues = false) {
   const tbody = document.getElementById('colTableBody');
   tbody.innerHTML = r.cols.map((c, i) => {
     const statsHtml = buildStatsHtml(c);
     const topHtml = c.topVals.length
-      ? c.topVals.map(tv => `<span>${esc(tv.value)}</span> ${esc(tv.pct)}`).join('<br>')
+      ? c.topVals.map((tv, vi) => `<span>${esc(displayValue(c, tv.value, vi, hideRawValues))}</span> ${esc(tv.pct)}`).join('<br>')
       : '—';
     const fillPct = parseFloat(c.fillRate) || 0;
     return `
@@ -609,7 +635,7 @@ function renderColumns(r) {
         </td>
         <td style="min-width:140px">${statsHtml}</td>
         <td class="top-vals" style="min-width:160px">${topHtml}</td>
-        <td class="sample-vals">${c.samples.map(esc).join('<br>')}</td>
+        <td class="sample-vals">${c.samples.map((sample, si) => esc(displayValue(c, sample, si, hideRawValues))).join('<br>')}</td>
       </tr>`;
   }).join('');
 }
@@ -643,8 +669,82 @@ function buildStatsHtml(c) {
   return '—';
 }
 
+function displayValue(column, value, index, hideRawValues) {
+  if (!hideRawValues) return value;
+  return describeValue(column, value, index);
+}
+
+function describeValue(column, value, index) {
+  const label = `${column.type} value ${index + 1}`;
+  const text = String(value);
+  if (text === '') return `${label} (empty)`;
+
+  if (column.type === 'boolean') {
+    const normalized = text.trim().toLowerCase();
+    const boolShape = ['true','yes','1','y','ja'].includes(normalized) ? 'true-like' : 'false-like';
+    return `${label} (${boolShape})`;
+  }
+
+  if (column.type === 'date') {
+    return `${label} (${dateShape(text)})`;
+  }
+
+  if (column.type === 'numeric' || column.type === 'integer') {
+    return `${label} (${numberShape(text)})`;
+  }
+
+  return `${label} (${textShape(text)})`;
+}
+
+function numberShape(value) {
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/,/g, '');
+  const numeric = Number(normalized);
+  const parts = [];
+  if (!Number.isNaN(numeric)) {
+    parts.push(numeric < 0 ? 'negative' : numeric > 0 ? 'positive' : 'zero');
+  }
+  const digits = (trimmed.match(/\d/g) || []).length;
+  parts.push(`${digits} digit${digits === 1 ? '' : 's'}`);
+  const decimalPart = trimmed.match(/[.,](\d+)$/);
+  if (decimalPart) parts.push(`${decimalPart[1].length} decimal place${decimalPart[1].length === 1 ? '' : 's'}`);
+  if (/[,%$€£]/.test(trimmed)) parts.push('formatted');
+  return parts.join(', ');
+}
+
+function dateShape(value) {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return 'YYYY-MM-DD format';
+  if (/^\d{4}\/\d{2}\/\d{2}/.test(trimmed)) return 'YYYY/MM/DD format';
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(trimmed)) return 'day-month-year-like format';
+  return `${trimmed.length} chars, date-like`;
+}
+
+function textShape(value) {
+  const trimmed = value.trim();
+  const hints = [];
+  const chars = trimmed.length;
+  const words = trimmed.split(/\s+/).filter(Boolean).length;
+  hints.push(`${chars} char${chars === 1 ? '' : 's'}`);
+  hints.push(`${words} word${words === 1 ? '' : 's'}`);
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) hints.push('email-like');
+  if (/^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)) hints.push('url-like');
+  if (looksPhoneLike(trimmed)) hints.push('phone-like');
+  if (/\d/.test(trimmed)) hints.push('contains digits');
+  if (/^[A-Z0-9 _.-]+$/.test(trimmed) && /[A-Z]/.test(trimmed)) hints.push('uppercase');
+  else if (/^[a-z0-9 _.-]+$/.test(trimmed) && /[a-z]/.test(trimmed)) hints.push('lowercase');
+  else if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(trimmed)) hints.push('title case');
+  if (/^[A-Z]{2,}[-_]\d+/.test(trimmed)) hints.push('code-like');
+  return hints.join(', ');
+}
+
+function looksPhoneLike(value) {
+  const digits = (value.match(/\d/g) || []).length;
+  return digits >= 7 && digits <= 15 && /^[\d\s()+.-]+$/.test(value);
+}
+
 // ─── markdown builder ─────────────────────────────────────────────────────────
-function buildMarkdown(r) {
+function buildMarkdown(r, hideRawValues = false) {
   const lines = [];
   lines.push(`# ${r.format} Context Report: \`${r.fileName}\``);
   if (r.sheetName) {
@@ -672,6 +772,9 @@ function buildMarkdown(r) {
   lines.push(`| Average fill rate | ${r.avgFill.toFixed(1)}% |`);
   if (r.fileMinDate) {
     lines.push(`| Date range (all date columns) | ${r.fileMinDate} → ${r.fileMaxDate} |`);
+  }
+  if (hideRawValues) {
+    lines.push(`| Raw top values and samples | Hidden; values are replaced with shape descriptors |`);
   }
   lines.push('');
 
@@ -721,14 +824,15 @@ function buildMarkdown(r) {
       lines.push('');
       lines.push('| Value | Count | % |');
       lines.push('|---|---|---|');
-      for (const tv of c.topVals) {
-        lines.push(`| \`${tv.value}\` | ${tv.count.toLocaleString()} | ${tv.pct} |`);
+      for (let vi = 0; vi < c.topVals.length; vi++) {
+        const tv = c.topVals[vi];
+        lines.push(`| \`${displayValue(c, tv.value, vi, hideRawValues)}\` | ${tv.count.toLocaleString()} | ${tv.pct} |`);
       }
     }
 
     if (c.samples.length) {
       lines.push('');
-      lines.push(`**Sample values:** ${c.samples.map(v => `\`${v}\``).join(', ')}`);
+      lines.push(`**Sample values:** ${c.samples.map((v, si) => `\`${displayValue(c, v, si, hideRawValues)}\``).join(', ')}`);
     }
     lines.push('');
   }
@@ -739,7 +843,7 @@ function buildMarkdown(r) {
   return lines.join('\n');
 }
 
-function buildWorkbookMarkdown(workbook, activeSheetIndex) {
+function buildWorkbookMarkdown(workbook, activeSheetIndex, hideRawValues = false) {
   const active = workbook.sheets.find(s => s.sheetIndex === activeSheetIndex) || workbook.sheets[0];
   const lines = [];
   lines.push(`# XLSX Context Report: \`${workbook.fileName}\``);
@@ -752,6 +856,9 @@ function buildWorkbookMarkdown(workbook, activeSheetIndex) {
   lines.push(`| File size | ${fmtBytes(workbook.fileSize)} |`);
   lines.push(`| Sheets analyzed | ${workbook.sheets.length.toLocaleString()} |`);
   lines.push(`| Active worksheet | \`${active.sheetName}\` |`);
+  if (hideRawValues) {
+    lines.push('| Raw top values and samples | Hidden; values are replaced with shape descriptors |');
+  }
   lines.push('');
   lines.push('## Worksheets');
   lines.push('');
@@ -762,7 +869,7 @@ function buildWorkbookMarkdown(workbook, activeSheetIndex) {
     lines.push(`| ${sheet.sheetIndex + 1} | \`${sheet.sheetName}\` | ${sheet.numRows.toLocaleString()} | ${sheet.numCols} | ${sheet.avgFill.toFixed(1)}% | ${dateRange} |`);
   }
   lines.push('');
-  lines.push(buildMarkdown(active).replace(/^# XLSX Context Report:[\s\S]*?\n## File Summary/, '## Active Worksheet Details'));
+  lines.push(buildMarkdown(active, hideRawValues).replace(/^# XLSX Context Report:[\s\S]*?\n## File Summary/, '## Active Worksheet Details'));
   return lines.join('\n');
 }
 
