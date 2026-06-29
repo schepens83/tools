@@ -7,16 +7,16 @@ Browser-based utility tools. Each tool is a single self-contained HTML file.
 ### Recently added
 
 - [URL Toolkit](https://schepens83.github.io/tools/url-toolkit/)
-- [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
 - [CSV/XLSX File Explorer](https://schepens83.github.io/tools/csv-explorer/)
+- [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 
 ### Recently updated
 
+- [CSV/XLSX File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [URL Toolkit](https://schepens83.github.io/tools/url-toolkit/)
 - [JSON Explorer](https://schepens83.github.io/tools/json-explorer/)
-- [CSV/XLSX File Explorer](https://schepens83.github.io/tools/csv-explorer/)
 - [extract_why](https://schepens83.github.io/tools/extract_why/)
 - [JSON Formatter](https://schepens83.github.io/tools/json-formatter/)
 
