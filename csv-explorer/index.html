@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CSV File Explorer</title>
+  <title>CSV/XLSX File Explorer</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --ink: #16202a; --muted: #5f6d7a; --line: #d8dee5;
@@ -133,11 +134,22 @@
     .progress-wrap { display: none; }
     .progress-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 0.5rem; }
     .progress-bar-inner { height: 100%; background: var(--blue); border-radius: 2px; width: 0%; transition: width 0.2s; }
+    .sheet-picker {
+      display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem;
+    }
+    .sheet-picker label {
+      font-size: 0.75rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .sheet-picker select {
+      font: inherit; min-width: 220px; border: 1px solid var(--line); border-radius: 6px;
+      padding: 0.4rem 0.55rem; background: var(--panel); color: var(--ink);
+    }
   </style>
 </head>
 <body>
 <nav>
-  <span class="nav-title">CSV File Explorer</span>
+  <span class="nav-title">CSV/XLSX File Explorer</span>
   <span class="spacer"></span>
   <button id="resetBtn" class="danger" style="display:none" onclick="reset()">Clear</button>
 </nav>
@@ -145,15 +157,20 @@
   <!-- Drop zone -->
   <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
     <div class="icon">📂</div>
-    <h2>Drop a CSV file here</h2>
-    <p>or <span class="browse-link">browse to select</span> — any separator (comma, semicolon, tab, pipe)</p>
-    <input type="file" id="fileInput" accept=".csv,.tsv,.txt" onchange="handleFile(this.files[0])">
+    <h2>Drop a CSV or XLSX file here</h2>
+    <p>or <span class="browse-link">browse to select</span> — CSV separators or Excel workbook sheets</p>
+    <input type="file" id="fileInput" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm" onchange="handleFile(this.files[0])">
   </div>
 
   <div class="status" id="statusMsg"></div>
   <div class="progress-wrap" id="progressWrap">
     <div style="font-size:0.8rem;color:var(--muted)">Parsing…</div>
     <div class="progress-bar"><div class="progress-bar-inner" id="progressBar"></div></div>
+  </div>
+
+  <div id="sheetSection" class="sheet-picker hidden">
+    <label for="sheetSelect">Worksheet</label>
+    <select id="sheetSelect" onchange="selectSheet(this.value)"></select>
   </div>
 
   <!-- Summary cards -->
@@ -214,10 +231,12 @@ dz.addEventListener('drop', e => {
 });
 
 let mdContent = '';
+let currentWorkbook = null;
 
 function reset() {
   mdContent = '';
-  ['summarySection','columnSection','markdownSection'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  currentWorkbook = null;
+  ['sheetSection','summarySection','columnSection','markdownSection'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('resetBtn').style.display = 'none';
   document.getElementById('dropZone').style.display = '';
   document.getElementById('statusMsg').className = 'status';
@@ -241,10 +260,11 @@ function handleFile(file) {
   reader.onload = e => {
     document.getElementById('progressBar').style.width = '50%';
     try {
-      const text = e.target.result;
-      const result = analyzeCSV(text, file);
+      const result = isWorkbookFile(file)
+        ? analyzeWorkbook(e.target.result, file)
+        : analyzeCSV(e.target.result, file);
       document.getElementById('progressBar').style.width = '90%';
-      renderResults(result, file);
+      renderResults(result);
       document.getElementById('progressBar').style.width = '100%';
       setTimeout(() => { document.getElementById('progressWrap').style.display = 'none'; }, 400);
       document.getElementById('dropZone').style.display = 'none';
@@ -255,7 +275,15 @@ function handleFile(file) {
     }
   };
   reader.onerror = () => { setStatus('Failed to read file.', 'error'); };
-  reader.readAsText(file, 'UTF-8');
+  if (isWorkbookFile(file)) {
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.readAsText(file, 'UTF-8');
+  }
+}
+
+function isWorkbookFile(file) {
+  return /\.(xlsx|xlsm|xls)$/i.test(file.name);
 }
 
 // ─── CSV parser ───────────────────────────────────────────────────────────────
@@ -343,8 +371,59 @@ function fmt(n) {
 function analyzeCSV(text, file) {
   const sep = detectSeparator(text.slice(0, 4000));
   const sepName = { ',': 'comma', ';': 'semicolon', '\t': 'tab', '|': 'pipe' }[sep] || sep;
-
   const rows = parseCSV(text, sep);
+  return analyzeRows(rows, file, {
+    format: 'CSV',
+    sep,
+    sepName,
+    sheetName: null,
+    sheetIndex: null,
+    sheetCount: null
+  });
+}
+
+function analyzeWorkbook(buffer, file) {
+  if (!window.XLSX) {
+    throw new Error('XLSX parser could not be loaded. Check your connection and try again.');
+  }
+
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+  const sheets = workbook.SheetNames.map((sheetName, index) => {
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      raw: false,
+      defval: '',
+      blankrows: false
+    });
+    try {
+      return analyzeRows(rows, file, {
+        format: 'XLSX',
+        sep: null,
+        sepName: null,
+        sheetName,
+        sheetIndex: index,
+        sheetCount: workbook.SheetNames.length
+      });
+    } catch {
+      return null;
+    }
+  }).filter(Boolean).filter(sheet => sheet.numCols > 0);
+
+  if (sheets.length === 0) throw new Error('No data found in workbook.');
+
+  return {
+    isWorkbook: true,
+    fileName: file.name,
+    fileSize: file.size,
+    format: 'XLSX',
+    sheets,
+    activeSheetIndex: sheets[0].sheetIndex
+  };
+}
+
+function analyzeRows(inputRows, file, source) {
+  const rows = normalizeRows(inputRows);
   if (rows.length === 0) throw new Error('No data found in file.');
 
   // Detect header: if first row looks like labels (non-numeric, non-date dominant)
@@ -423,18 +502,65 @@ function analyzeCSV(text, file) {
   const fileMaxDate = allDates[allDates.length-1] || null;
 
   // Estimate quality: avg fill rate
-  const avgFill = cols.reduce((a,c) => a + c.nonEmptyCount, 0) / (numCols * numRows) * 100;
+  const totalCells = numCols * numRows;
+  const avgFill = totalCells ? cols.reduce((a,c) => a + c.nonEmptyCount, 0) / totalCells * 100 : 0;
 
-  return { sep, sepName, hasHeader, headers, numRows, numCols, cols,
+  return { format: source.format, sep: source.sep, sepName: source.sepName,
+           sheetName: source.sheetName, sheetIndex: source.sheetIndex, sheetCount: source.sheetCount,
+           hasHeader, headers, numRows, numCols, cols,
            fileMinDate, fileMaxDate, avgFill,
            fileSize: file.size, fileName: file.name };
 }
 
+function normalizeRows(rows) {
+  return rows
+    .map(row => Array.isArray(row) ? row.map(formatCell) : [formatCell(row)])
+    .map(row => {
+      const next = row.slice();
+      while (next.length && next[next.length - 1] === '') next.pop();
+      return next;
+    })
+    .filter(row => row.some(v => v !== ''));
+}
+
+function formatCell(value) {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date && !isNaN(value)) return value.toISOString().slice(0, 10);
+  return String(value).trim();
+}
+
 // ─── render ───────────────────────────────────────────────────────────────────
-function renderResults(r, file) {
+function renderResults(result) {
+  currentWorkbook = result.isWorkbook ? result : null;
+  if (currentWorkbook) {
+    renderSheetPicker(currentWorkbook);
+    renderActiveSheet(currentWorkbook.sheets[0]);
+    return;
+  }
+
+  document.getElementById('sheetSection').classList.add('hidden');
+  renderActiveSheet(result);
+}
+
+function renderSheetPicker(workbook) {
+  const select = document.getElementById('sheetSelect');
+  select.innerHTML = workbook.sheets.map(sheet =>
+    `<option value="${sheet.sheetIndex}">${esc(sheet.sheetName)} (${sheet.numRows.toLocaleString()} rows, ${sheet.numCols} cols)</option>`
+  ).join('');
+  select.value = workbook.sheets[0].sheetIndex;
+  document.getElementById('sheetSection').classList.toggle('hidden', workbook.sheets.length <= 1);
+}
+
+function selectSheet(sheetIndex) {
+  if (!currentWorkbook) return;
+  const sheet = currentWorkbook.sheets.find(s => String(s.sheetIndex) === String(sheetIndex));
+  if (sheet) renderActiveSheet(sheet);
+}
+
+function renderActiveSheet(r) {
   renderSummary(r);
   renderColumns(r);
-  mdContent = buildMarkdown(r);
+  mdContent = currentWorkbook ? buildWorkbookMarkdown(currentWorkbook, r.sheetIndex) : buildMarkdown(r);
   document.getElementById('mdBox').textContent = mdContent;
   ['summarySection','columnSection','markdownSection'].forEach(id =>
     document.getElementById(id).classList.remove('hidden'));
@@ -443,15 +569,17 @@ function renderResults(r, file) {
 function renderSummary(r) {
   const cards = [
     { label: 'File', value: r.fileName, sub: fmtBytes(r.fileSize) },
+    { label: 'Format', value: r.format, sub: r.sheetName ? `sheet ${r.sheetIndex + 1} of ${r.sheetCount}` : '' },
+    ...(r.sheetName ? [{ label: 'Worksheet', value: r.sheetName, sub: '' }] : []),
     { label: 'Rows', value: r.numRows.toLocaleString(), sub: 'data rows' },
     { label: 'Columns', value: r.numCols, sub: 'fields' },
-    { label: 'Separator', value: r.sepName, sub: r.sep === '\t' ? '\\t' : `"${r.sep}"` },
+    ...(r.sepName ? [{ label: 'Separator', value: r.sepName, sub: r.sep === '\t' ? '\\t' : `"${r.sep}"` }] : []),
     { label: 'Header row', value: r.hasHeader ? 'Yes' : 'No', sub: '' },
     { label: 'Avg fill rate', value: r.avgFill.toFixed(1) + '%', sub: 'non-empty cells' },
     ...(r.fileMinDate ? [{ label: 'Date range', value: r.fileMinDate, sub: '→ ' + r.fileMaxDate }] : []),
   ];
   document.getElementById('summaryGrid').innerHTML = cards.map(c =>
-    `<div class="card"><div class="label">${c.label}</div><div class="value">${c.value}</div>${c.sub ? `<div class="sub">${c.sub}</div>` : ''}</div>`
+    `<div class="card"><div class="label">${esc(c.label)}</div><div class="value">${esc(c.value)}</div>${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ''}</div>`
   ).join('');
 }
 
@@ -462,13 +590,13 @@ function renderColumns(r) {
   tbody.innerHTML = r.cols.map((c, i) => {
     const statsHtml = buildStatsHtml(c);
     const topHtml = c.topVals.length
-      ? c.topVals.map(tv => `<span>${tv.value}</span> ${tv.pct}`).join('<br>')
+      ? c.topVals.map(tv => `<span>${esc(tv.value)}</span> ${esc(tv.pct)}`).join('<br>')
       : '—';
     const fillPct = parseFloat(c.fillRate) || 0;
     return `
       <tr>
         <td style="color:var(--muted);font-size:0.75rem">${i+1}</td>
-        <td class="col-name" title="${esc(c.name)}">${esc(c.name)}</td>
+        <td class="col-name" title="${escAttr(c.name)}">${esc(c.name)}</td>
         <td><span class="${typeClass(c.type)}">${c.type}</span></td>
         <td>
           ${c.fillRate}
@@ -499,6 +627,7 @@ function buildStatsHtml(c) {
       </div>`;
   }
   if (c.type === 'date') {
+    if (!s.minDate) return '—';
     return `<div style="font-size:0.75rem;line-height:1.7">
       <b>${s.minDate}</b><br>→ <b>${s.maxDate}</b><br>
       <span style="color:var(--muted)">${s.spanDays} days</span></div>`;
@@ -517,7 +646,11 @@ function buildStatsHtml(c) {
 // ─── markdown builder ─────────────────────────────────────────────────────────
 function buildMarkdown(r) {
   const lines = [];
-  lines.push(`# CSV Context Report: \`${r.fileName}\``);
+  lines.push(`# ${r.format} Context Report: \`${r.fileName}\``);
+  if (r.sheetName) {
+    lines.push('');
+    lines.push(`Worksheet: \`${r.sheetName}\``);
+  }
   lines.push('');
 
   lines.push('## File Summary');
@@ -526,9 +659,15 @@ function buildMarkdown(r) {
   lines.push(`|---|---|`);
   lines.push(`| File name | \`${r.fileName}\` |`);
   lines.push(`| File size | ${fmtBytes(r.fileSize)} |`);
+  lines.push(`| Format | ${r.format} |`);
+  if (r.sheetName) {
+    lines.push(`| Worksheet | \`${r.sheetName}\` (${r.sheetIndex + 1} of ${r.sheetCount}) |`);
+  }
   lines.push(`| Rows (data) | ${r.numRows.toLocaleString()} |`);
   lines.push(`| Columns | ${r.numCols} |`);
-  lines.push(`| Separator | ${r.sepName} (\`${r.sep === '\t' ? '\\t' : r.sep}\`) |`);
+  if (r.sepName) {
+    lines.push(`| Separator | ${r.sepName} (\`${r.sep === '\t' ? '\\t' : r.sep}\`) |`);
+  }
   lines.push(`| Header row detected | ${r.hasHeader ? 'Yes' : 'No'} |`);
   lines.push(`| Average fill rate | ${r.avgFill.toFixed(1)}% |`);
   if (r.fileMinDate) {
@@ -567,7 +706,7 @@ function buildMarkdown(r) {
       lines.push(`- **Std dev:** ${fmt(+s.stdev.toFixed(6))}`);
       lines.push(`- **25th pct:** ${fmt(s.p25)}  |  **75th pct:** ${fmt(s.p75)}`);
       lines.push(`- **Sum:** ${fmt(s.sum)}`);
-    } else if (c.type === 'date') {
+    } else if (c.type === 'date' && s.minDate) {
       lines.push(`- **Min date:** ${s.minDate}`);
       lines.push(`- **Max date:** ${s.maxDate}`);
       lines.push(`- **Span:** ${s.spanDays} days`);
@@ -595,8 +734,35 @@ function buildMarkdown(r) {
   }
 
   lines.push('---');
-  lines.push(`*Generated by CSV File Explorer — ${new Date().toISOString().slice(0,16).replace('T',' ')}*`);
+  lines.push(`*Generated by CSV/XLSX File Explorer — ${new Date().toISOString().slice(0,16).replace('T',' ')}*`);
 
+  return lines.join('\n');
+}
+
+function buildWorkbookMarkdown(workbook, activeSheetIndex) {
+  const active = workbook.sheets.find(s => s.sheetIndex === activeSheetIndex) || workbook.sheets[0];
+  const lines = [];
+  lines.push(`# XLSX Context Report: \`${workbook.fileName}\``);
+  lines.push('');
+  lines.push('## Workbook Summary');
+  lines.push('');
+  lines.push('| Property | Value |');
+  lines.push('|---|---|');
+  lines.push(`| File name | \`${workbook.fileName}\` |`);
+  lines.push(`| File size | ${fmtBytes(workbook.fileSize)} |`);
+  lines.push(`| Sheets analyzed | ${workbook.sheets.length.toLocaleString()} |`);
+  lines.push(`| Active worksheet | \`${active.sheetName}\` |`);
+  lines.push('');
+  lines.push('## Worksheets');
+  lines.push('');
+  lines.push('| # | Worksheet | Rows | Columns | Avg fill rate | Date range |');
+  lines.push('|---|---|---|---|---|---|');
+  for (const sheet of workbook.sheets) {
+    const dateRange = sheet.fileMinDate ? `${sheet.fileMinDate} to ${sheet.fileMaxDate}` : '—';
+    lines.push(`| ${sheet.sheetIndex + 1} | \`${sheet.sheetName}\` | ${sheet.numRows.toLocaleString()} | ${sheet.numCols} | ${sheet.avgFill.toFixed(1)}% | ${dateRange} |`);
+  }
+  lines.push('');
+  lines.push(buildMarkdown(active).replace(/^# XLSX Context Report:[\s\S]*?\n## File Summary/, '## Active Worksheet Details'));
   return lines.join('\n');
 }
 
@@ -622,6 +788,9 @@ function copyMarkdown() {
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function fmtBytes(b) {
   if (b < 1024) return b + ' B';
